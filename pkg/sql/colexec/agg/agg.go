@@ -23,11 +23,12 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/mheap"
 )
 
-func NewUnaryAgg[T1, T2 any](priv any, isCount bool, ityp, otyp types.Type, grows func(int),
+func NewUnaryAgg[T1, T2 any](op int, priv any, isCount bool, ityp, otyp types.Type, grows func(int),
 	eval func([]T2) []T2, merge func(int64, int64, T2, T2, bool, bool, any) (T2, bool),
 	fill func(int64, T1, T2, int64, bool, bool) (T2, bool),
 	batchFill func(any, any, int64, int64, []uint64, []int64, *nulls.Nulls) error) Agg[*UnaryAgg[T1, T2]] {
 	return &UnaryAgg[T1, T2]{
+		op:        op,
 		priv:      priv,
 		otyp:      otyp,
 		eval:      eval,
@@ -54,6 +55,7 @@ func (a *UnaryAgg[T1, T2]) Free(m *mheap.Mheap) {
 
 func (a *UnaryAgg[T1, T2]) Dup() Agg[any] {
 	return &UnaryAgg[T1, T2]{
+		op:    a.op,
 		otyp:  a.otyp,
 		ityps: a.ityps,
 		fill:  a.fill,
@@ -248,4 +250,63 @@ func (a *UnaryAgg[T1, T2]) Eval(m *mheap.Mheap) (*vector.Vector, error) {
 		return vec, nil
 	}
 	return vector.NewWithData(a.otyp, a.da, a.eval(a.vs), nsp), nil
+}
+
+func (a *UnaryAgg[T1, T2]) MarshalBinary() ([]byte, error) {
+	// wqx TODO: change here
+	// encode or marshal
+	dates, err := types.Encode(a.priv)
+	if err != nil {
+		return nil, err
+	}
+	return types.Encode(&EncodeAgg{
+		Op:         a.op,
+		Private:    dates,
+		Es:         a.es,
+		Da:         a.da,
+		InputType:  a.ityps,
+		OutputType: a.otyp,
+	})
+}
+
+func (a *UnaryAgg[T1, T2]) UnmarshalBinary(data []byte) error {
+	resultUa := new(EncodeAgg)
+	if len(resultUa.InputType) == 0 {
+		panic("")
+	}
+	agg, err := New(resultUa.Op, false, resultUa.InputType[0])
+	agg.UnmarshalBinary(resultUa.Private)
+
+	a.ityps = resultUa.InputType
+	a.otyp = resultUa.OutputType
+
+	// recover the function pointer
+
+	a = agg.Dup()
+
+	//recover data
+	err := types.Decode(data, resultUa)
+	if err != nil {
+		return err
+	}
+	a.op = resultUa.Op
+	a.es = resultUa.Es
+	a.da = resultUa.Da
+
+	a.vs = types.DecodeFixedSlice[T2](a.da, a.otyp.TypeSize())
+
+	if len(a.ityps) == 0 {
+		panic("")
+	}
+	agg, err := New(a.op, false, a.ityps[0])
+	if err != nil {
+		return err
+	}
+	types.Decode(resultUa.Private, agg)
+	a.fill = agg.fill
+	a.merge = agg.Merge
+	a.grows = agg.Grows
+	a.eval = agg.Eval
+
+	return nil
 }

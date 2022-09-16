@@ -340,3 +340,11 @@ func (a *UnaryDistAgg[T1, T2]) Eval(m *mheap.Mheap) (*vector.Vector, error) {
 	}
 	return vector.NewWithData(a.otyp, a.da, a.eval(a.vs), nsp), nil
 }
+
+func (a *UnaryDistAgg[T1, T2]) MarshalBinary() ([]byte, error) {
+	return nil, nil
+}
+
+func (a *UnaryDistAgg[T1, T2]) UnmarshalBinary(data []byte) error {
+	return nil
+}

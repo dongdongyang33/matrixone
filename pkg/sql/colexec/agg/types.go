@@ -116,10 +116,19 @@ type Agg[T any] interface {
 	//  agg1's (vps[i]-1)th group is related to agg2's (start+i)th group
 	// For more introduction of os, please refer to comments of Function BatchFill.
 	BatchMerge(agg2 Agg[any], start int64, os []uint8, vps []uint64) error
+
+	// Marshal Agg to []byte
+	MarshalBinary() ([]byte, error)
+
+	// Unmarshal []byte to Agg
+	UnmarshalBinary(data []byte) error
 }
 
 // UnaryAgg generic aggregation function with one input vector and without distinct
 type UnaryAgg[T1, T2 any] struct {
+	// aggregation operation type
+	op int
+
 	priv any
 
 	// vs is result value list
@@ -162,8 +171,21 @@ type UnaryAgg[T1, T2 any] struct {
 	batchFill func(any, any, int64, int64, []uint64, []int64, *nulls.Nulls) error
 }
 
+type EncodeAgg struct {
+	Op      int
+	Private []byte
+	Es      []bool
+	Da      []byte
+
+	InputType  []types.Type
+	OutputType types.Type
+}
+
 // UnaryDistAgg generic aggregation function with one input vector and with distinct
 type UnaryDistAgg[T1, T2 any] struct {
+	// aggregation operation type
+	op int
+
 	// vs is result value list
 	vs []T2
 	// es, es[i] is true to indicate that this group has not yet been populated with any value
@@ -205,6 +227,17 @@ type UnaryDistAgg[T1, T2 any] struct {
 	//  fifth represents whether it is a new group
 	//  sixth represents whether the value to be fed is null
 	fill func(int64, T1, T2, int64, bool, bool) (T2, bool)
+}
+
+type EncodeDisAgg struct {
+	Op   int
+	Es   []bool
+	Da   []byte
+	Srcs []byte
+
+	IsCount    bool
+	InputType  []types.Type
+	OutputType types.Type
 }
 
 type Compare interface {
