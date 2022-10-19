@@ -193,6 +193,10 @@ func MockVector(t types.Type, rows int, unique, nullable bool, provider Vector) 
 		for i := 1; i <= rows; i++ {
 			vec.Append(types.FromCalendar(int32(i)*100, 1, 1))
 		}
+	case types.T_time:
+		for i := 1; i <= rows; i++ {
+			vec.Append(types.FromClock(0, 0, 0, 1, 1, 1, 1))
+		}
 	case types.T_timestamp:
 		for i := int32(1); i <= int32(rows); i++ {
 			vec.Append(types.Timestamp(common.NextGlobalSeqNum()))

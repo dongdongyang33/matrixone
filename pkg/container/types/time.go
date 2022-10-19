@@ -61,14 +61,14 @@ func (t Time) String2(precision int32) string {
 // During parsing, if the input length of msec is larger than predefined
 // precision, it will be rounded
 // eg.
-//   Time(3) input string   	parsing result
-//	"11:11:11.1234"		"11:11:11.123"
-//	"11:11:11.1235"		"11:11:11.124"
-//	"11:11:11.9994"      	"11:11:11.999"
-//	"11:11:11.9995"      	"11:11:12.000"
-//	"-11:11:11.1235"	"-11:11:11.124"
-//	"-11:11:11.9995"      	"-11:11:12.000"
-
+//
+//	  Time(3) input string   	parsing result
+//	"11:11:11.1234"			"11:11:11.123"
+//	"11:11:11.1235"			"11:11:11.124"
+//	"11:11:11.9994"      		"11:11:11.999"
+//	"11:11:11.9995"      		"11:11:12.000"
+//	"-11:11:11.1235"		"-11:11:11.124"
+//	"-11:11:11.9995"      		"-11:11:12.000"
 func ParseTime(s string, precision int32) (Time, error) {
 	s = strings.TrimSpace(s)
 

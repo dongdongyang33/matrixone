@@ -93,3 +93,28 @@ func DateStringToDate(vectors []*vector.Vector, proc *process.Process) (*vector.
 		return resultVector, err
 	}
 }
+
+func TimesToDate(vectors []*vector.Vector, proc *process.Process) (*vector.Vector, error) {
+	inputVector := vectors[0]
+	resultType := types.Type{Oid: types.T_date, Size: 4}
+	inputValues := vector.MustStrCols(inputVector)
+
+	if inputVector.IsScalar() {
+		if inputVector.ConstVectorIsNull() {
+			return proc.AllocScalarNullVector(resultType), nil
+		}
+		resultVector := vector.NewConst(resultType, 1)
+		resultValues := make([]types.Date, 1)
+		result, err := date.DateStringToDate(inputValues, resultValues)
+		vector.SetCol(resultVector, result)
+		return resultVector, err
+	} else {
+		resultVector, err := proc.AllocVectorOfRows(resultType, int64(len(inputValues)), inputVector.Nsp)
+		if err != nil {
+			return nil, err
+		}
+		resultValues := vector.MustTCols[types.Date](resultVector)
+		_, err = date.DateStringToDate(inputValues, resultValues)
+		return resultVector, err
+	}
+}

@@ -322,6 +322,16 @@ var operators = map[int]Functions{
 				ReturnTyp: types.T_bool,
 				Fn:        operator.IsNull,
 			},
+			{
+				Index:  19,
+				Flag:   plan.Function_STRICT,
+				Layout: IS_NULL_EXPRESSION,
+				Args: []types.T{
+					types.T_time,
+				},
+				ReturnTyp: types.T_bool,
+				Fn:        operator.IsNull,
+			},
 		},
 	},
 
@@ -514,6 +524,16 @@ var operators = map[int]Functions{
 				Layout: IS_NULL_EXPRESSION,
 				Args: []types.T{
 					types.T_json,
+				},
+				ReturnTyp: types.T_bool,
+				Fn:        operator.IsNotNull,
+			},
+			{
+				Index:  19,
+				Flag:   plan.Function_STRICT,
+				Layout: IS_NULL_EXPRESSION,
+				Args: []types.T{
+					types.T_time,
 				},
 				ReturnTyp: types.T_bool,
 				Fn:        operator.IsNotNull,
@@ -895,6 +915,17 @@ var operators = map[int]Functions{
 				ReturnTyp: types.T_bool,
 				Fn:        operator.EqUuid,
 			},
+			{
+				Index:  20,
+				Flag:   plan.Function_STRICT,
+				Layout: COMPARISON_OPERATOR,
+				Args: []types.T{
+					types.T_time,
+					types.T_time,
+				},
+				ReturnTyp: types.T_bool,
+				Fn:        operator.EqGeneral[types.Time],
+			},
 		},
 	},
 
@@ -1121,6 +1152,17 @@ var operators = map[int]Functions{
 				},
 				ReturnTyp: types.T_bool,
 				Fn:        operator.GtUuid,
+			},
+			{
+				Index:  20,
+				Flag:   plan.Function_STRICT | plan.Function_MONOTONICAL,
+				Layout: COMPARISON_OPERATOR,
+				Args: []types.T{
+					types.T_time,
+					types.T_time,
+				},
+				ReturnTyp: types.T_bool,
+				Fn:        operator.GtGeneral[types.Time],
 			},
 		},
 	},
@@ -1349,6 +1391,17 @@ var operators = map[int]Functions{
 				ReturnTyp: types.T_bool,
 				Fn:        operator.GeUuid,
 			},
+			{
+				Index:  20,
+				Flag:   plan.Function_STRICT | plan.Function_MONOTONICAL,
+				Layout: COMPARISON_OPERATOR,
+				Args: []types.T{
+					types.T_time,
+					types.T_time,
+				},
+				ReturnTyp: types.T_bool,
+				Fn:        operator.GeGeneral[types.Time],
+			},
 		},
 	},
 
@@ -1575,6 +1628,17 @@ var operators = map[int]Functions{
 				},
 				ReturnTyp: types.T_bool,
 				Fn:        operator.LtUuid,
+			},
+			{
+				Index:  20,
+				Flag:   plan.Function_STRICT,
+				Layout: COMPARISON_OPERATOR,
+				Args: []types.T{
+					types.T_time,
+					types.T_time,
+				},
+				ReturnTyp: types.T_bool,
+				Fn:        operator.LtGeneral[types.Time],
 			},
 		},
 	},
@@ -1803,6 +1867,17 @@ var operators = map[int]Functions{
 				ReturnTyp: types.T_bool,
 				Fn:        operator.LeUuid,
 			},
+			{
+				Index:  15,
+				Flag:   plan.Function_STRICT,
+				Layout: COMPARISON_OPERATOR,
+				Args: []types.T{
+					types.T_time,
+					types.T_time,
+				},
+				ReturnTyp: types.T_bool,
+				Fn:        operator.LeGeneral[types.Time],
+			},
 		},
 	},
 
@@ -2029,6 +2104,17 @@ var operators = map[int]Functions{
 				},
 				ReturnTyp: types.T_bool,
 				Fn:        operator.NeUuid,
+			},
+			{
+				Index:  20,
+				Flag:   plan.Function_STRICT,
+				Layout: COMPARISON_OPERATOR,
+				Args: []types.T{
+					types.T_time,
+					types.T_time,
+				},
+				ReturnTyp: types.T_bool,
+				Fn:        operator.NeGeneral[types.Time],
 			},
 		},
 	},
@@ -5720,6 +5806,14 @@ var operators = map[int]Functions{
 				ReturnTyp: types.T_blob,
 				Fn:        operator.CaseWhenText,
 			},
+			{
+				Index:     19,
+				Volatile:  true,
+				Flag:      plan.Function_NONE,
+				Layout:    CASE_WHEN_EXPRESSION,
+				ReturnTyp: types.T_time,
+				Fn:        operator.CaseWhenTime,
+			},
 		},
 	},
 
@@ -5908,6 +6002,14 @@ var operators = map[int]Functions{
 				Layout:    STANDARD_FUNCTION,
 				ReturnTyp: types.T_blob,
 				Fn:        operator.IfText,
+			},
+			{
+				Index:     19,
+				Volatile:  true,
+				Flag:      plan.Function_NONE,
+				Layout:    STANDARD_FUNCTION,
+				ReturnTyp: types.T_time,
+				Fn:        operator.IfTime,
 			},
 		},
 	},

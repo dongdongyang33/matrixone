@@ -642,7 +642,7 @@ func (mp *MysqlProtocolImpl) ParseExecuteData(stmt *PrepareStmt, data []byte, po
 				pos = newPos
 				vars[i] = []byte(val)
 
-			case defines.MYSQL_TYPE_DATE, defines.MYSQL_TYPE_DATETIME, defines.MYSQL_TYPE_TIMESTAMP:
+			case defines.MYSQL_TYPE_DATE, defines.MYSQL_TYPE_DATETIME, defines.MYSQL_TYPE_TIME, defines.MYSQL_TYPE_TIMESTAMP:
 				// See https://dev.mysql.com/doc/internals/en/binary-protocol-value.html
 				// for more details.
 				length, newPos, ok := mp.io.ReadUint8(data, pos)
@@ -659,6 +659,8 @@ func (mp *MysqlProtocolImpl) ParseExecuteData(stmt *PrepareStmt, data []byte, po
 				case 7:
 					pos, vars[i] = mp.readDateTime(data, pos)
 				case 11:
+					pos, vars[i] = mp.readDateTime(data, pos)
+				case 15:
 					pos, vars[i] = mp.readTimestamp(data, pos)
 				default:
 					err = moerr.NewInvalidInput("mysql protocol error, malformed packet")
@@ -693,6 +695,9 @@ func (mp *MysqlProtocolImpl) readDate(data []byte, pos int) (int, string) {
 	pos++
 	return pos, fmt.Sprintf("%04d-%02d-%02d", year, month, day)
 }
+
+//wqx TODO: add implement!!
+//func (mp *MysqlProtocolImpl) readTime(data []byte, pos int) (int, string)
 
 func (mp *MysqlProtocolImpl) readDateTime(data []byte, pos int) (int, string) {
 	pos, date := mp.readDate(data, pos)
@@ -1784,6 +1789,12 @@ func (mp *MysqlProtocolImpl) makeResultSetBinaryRow(data []byte, mrs *MysqlResul
 			} else {
 				data = mp.appendDate(data, value.(types.Date))
 			}
+		case defines.MYSQL_TYPE_TIME:
+			if value, err := mrs.GetValue(rowIdx, i); err != nil {
+				return nil, err
+			} else {
+				data = mp.appendTime(data, value.(types.Time))
+			}
 		case defines.MYSQL_TYPE_DATETIME, defines.MYSQL_TYPE_TIMESTAMP:
 			if value, err := mrs.GetString(rowIdx, i); err != nil {
 				return nil, err
@@ -1919,15 +1930,18 @@ func (mp *MysqlProtocolImpl) makeResultSetTextRow(data []byte, mrs *MysqlResultS
 			} else {
 				data = mp.appendStringLenEnc(data, value)
 			}
+		case defines.MYSQL_TYPE_TIME:
+			if value, err2 := mrs.GetString(r, i); err2 != nil {
+				return nil, err2
+			} else {
+				data = mp.appendStringLenEnc(data, value)
+			}
 		case defines.MYSQL_TYPE_TIMESTAMP:
 			if value, err2 := mrs.GetString(r, i); err2 != nil {
 				return nil, err2
 			} else {
 				data = mp.appendStringLenEnc(data, value)
 			}
-		case defines.MYSQL_TYPE_TIME:
-			return nil, moerr.NewInternalError("unsupported MYSQL_TYPE_TIME")
-
 		default:
 			return nil, moerr.NewInternalError("unsupported column type %d ", mysqlColumn.ColumnType())
 		}
@@ -2190,6 +2204,16 @@ func (mp *MysqlProtocolImpl) appendDatetime(data []byte, dt types.Datetime) []by
 		data = mp.append(data, 4)
 		data = mp.appendUint16(data, uint16(dt.Year()))
 		data = mp.append(data, dt.Month(), dt.Day())
+	}
+	return data
+}
+
+func (mp *MysqlProtocolImpl) appendTime(data []byte, t types.Time) []byte {
+	if int64(t) == 0 {
+		data = mp.append(data, 0)
+	} else {
+		data = mp.append(data, 3)
+		data = mp.append(data, byte(t.Hour()), byte(t.Minute()), byte(t.Sec()))
 	}
 	return data
 }
