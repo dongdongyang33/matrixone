@@ -166,6 +166,7 @@ var (
 	DateToBytes         = dateToBytes
 	DateToDatetime      = dateToDateTime
 	DatetimeToBytes     = datetimeToBytes
+	TimeToBytes         = timeToBytes
 	DatetimeToDate      = datetimeToDate
 	UuidToBytes         = uuidToBytes
 )
@@ -733,6 +734,13 @@ func datetimeToDate(xs []types.Datetime, rs []types.Date) ([]types.Date, error) 
 }
 
 func datetimeToBytes(xs []types.Datetime, rs []string, precision int32) ([]string, error) {
+	for i, x := range xs {
+		rs[i] = x.String2(precision)
+	}
+	return rs, nil
+}
+
+func timeToBytes(xs []types.Time, rs []string, precision int32) ([]string, error) {
 	for i, x := range xs {
 		rs[i] = x.String2(precision)
 	}

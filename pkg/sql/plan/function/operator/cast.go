@@ -1737,6 +1737,27 @@ func CastDecimal64AsTimestamp(lv, rv *vector.Vector, proc *process.Process) (*ve
 	return vec, nil
 }
 
+func CastTimeAsString(lv, rv *vector.Vector, proc *process.Process) (*vector.Vector, error) {
+	var err error
+
+	lvs := vector.MustTCols[types.Time](lv)
+	col := make([]string, len(lvs))
+	if lv.IsScalar() {
+		if lv.IsScalarNull() {
+			return proc.AllocConstNullVector(rv.Typ, lv.Length()), nil
+		}
+		if col, err = binary.TimeToBytes(lvs, col, lv.Typ.Precision); err != nil {
+			return nil, err
+		}
+		return vector.NewConstString(rv.Typ, lv.Length(), col[0], proc.Mp()), nil
+	}
+
+	if col, err = binary.TimeToBytes(lvs, col, lv.Typ.Precision); err != nil {
+		return nil, err
+	}
+	return vector.NewWithStrings(rv.Typ, col, lv.Nsp, proc.Mp()), nil
+}
+
 func CastDecimal128AsTimestamp(lv, rv *vector.Vector, proc *process.Process) (*vector.Vector, error) {
 	lvs := vector.MustTCols[types.Decimal128](lv)
 	if lv.IsScalar() {

@@ -16,6 +16,7 @@ package types
 
 import (
 	"fmt"
+
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"golang.org/x/exp/constraints"
 )
@@ -102,6 +103,7 @@ type Date int32
 
 type Datetime int64
 type Timestamp int64
+type Time int64
 
 type Decimal64 [8]byte
 type Decimal128 [16]byte

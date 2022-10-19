@@ -228,6 +228,10 @@ func (dt Datetime) ToDate() Date {
 	return Date((dt.sec()) / secsPerDay)
 }
 
+func (dt Datetime) ToTime() Time {
+	return Time(dt % secsPerDay)
+}
+
 func (dt Datetime) Clock() (hour, minute, sec int8) {
 	t := (dt.sec()) % secsPerDay
 	hour = int8(t / secsPerHour)

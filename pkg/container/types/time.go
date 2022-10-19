@@ -1,0 +1,242 @@
+// Copyright 2021 Matrix Origin
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package types
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/matrixorigin/matrixone/pkg/common/moerr"
+)
+
+const (
+	minHourInTime, maxHourInTime = 0, 838
+)
+
+var (
+	FillString = []string{"", "0", "00", "000", "0000", "00000", "000000", "0000000"}
+)
+
+func (t Time) String() string {
+	h, m, s := t.ClockFormat()
+	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+}
+
+func (t Time) String2(precision int32) string {
+	h, m, s := t.ClockFormat()
+	if precision > 0 {
+		msec := int64(t) % microSecsPerSec
+		msecInstr := fmt.Sprintf("%06d\n", msec)
+		msecInstr = msecInstr[:precision]
+
+		return fmt.Sprintf("%02d:%02d:%02d"+"."+msecInstr, h, m, s)
+	}
+	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+}
+
+// The Time type holds number of microseconds for hh:mm:ss(.msec)
+
+// ParseTime will parse a string to a Time type
+// Support Format:
+// * yyyy-mm-dd hh:mm:ss(.msec)
+// * yyyymmddhhmmss(.msec)
+// * (-)hh:mm:ss(.msec) and (-)hhh:mm:ss(.msec)
+// * (-)hhmmss(.msec) and (-)hhhmmss(.msec)
+// * (-)hh:mm and (-)hhh:mm
+
+// During parsing, if the input length of msec is larger than predefined
+// precision, it will be rounded
+// eg.
+//   Time(3) input string   	parsing result
+//	"11:11:11.1234"		"11:11:11.123"
+//	"11:11:11.1235"		"11:11:11.124"
+//	"11:11:11.9994"      	"11:11:11.999"
+//	"11:11:11.9995"      	"11:11:12.000"
+//	"-11:11:11.1235"	"-11:11:11.124"
+//	"-11:11:11.9995"      	"-11:11:12.000"
+
+func ParseTime(s string, precision int32) (Time, error) {
+	s = strings.TrimSpace(s)
+
+	// seperate to date&time and msec parts
+	strs := strings.Split(s, ".")
+	var timeString string
+	isNegative := false
+
+	// handle date&time part
+	// If the input string have date, make sure it is valid.
+	if len(strs[0]) >= 14 {
+		// The minest length of yyyy-mm-dd hh:mm:ss or yyyymmddhhmmss
+		// must greater than 14 and it can be handled like Datetime
+		dt, err := ParseDatetime(s, precision)
+		if err != nil {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+		return dt.ToTime(), nil
+	} else {
+		// if length is less than 14 it must be format:
+		// (-)hh:mm:ss(.msec) / (-)hhh:mm:ss(.msec)
+		// (-)hhmmss(.msec) / (-)hhhmmss(.msec)
+		if s[0] == '-' {
+			isNegative = true
+			timeString = strs[0][1:]
+		} else {
+			timeString = strs[0]
+		}
+	}
+
+	// handle time part
+	var hour, minute, sec uint64
+	var msec uint32 = 0
+	var carry uint32 = 0
+	var err error
+	timeArr := strings.Split(timeString, ":")
+	switch len(timeArr) {
+	case 1: // s/ss/mss/mmss/hmmss/hhmmss/hhhmmss
+		if len(timeArr[0]) > 7 {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+		// fill 0 to make sure its length is 7
+		// eg.
+		//	1 => 0000001 => (000)(00)(01) => 00:00:01
+		//	123 => 0000123 => (000)(01)(23) => 00:01:23
+		//	12345 => 0012345 => (001)(23)(45) => 01:23:45
+		n := 7 - len(timeArr[0])
+		parseString := FillString[n] + timeArr[0]
+		if hour, err = strconv.ParseUint(parseString[0:3], 10, 32); err != nil {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+		if minute, err = strconv.ParseUint(parseString[3:5], 10, 8); err != nil {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+		if sec, err = strconv.ParseUint(parseString[5:7], 10, 8); err != nil {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+
+	case 2: // hh:ss/ hhh:ss
+		if hour, err = strconv.ParseUint(timeArr[0], 10, 32); err != nil {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+		if minute, err = strconv.ParseUint(timeArr[1], 10, 8); err != nil {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+		sec = 0
+	case 3: // hh:mm:ss / hhh:mm:ss
+		if hour, err = strconv.ParseUint(timeArr[0], 10, 32); err != nil {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+		if minute, err = strconv.ParseUint(timeArr[0], 10, 8); err != nil {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+		if sec, err = strconv.ParseUint(timeArr[1], 10, 8); err != nil {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+	default:
+		return -1, moerr.NewInvalidInput("invalid time value %s", s)
+	}
+
+	if !validTime(hour, minute, sec) {
+		return -1, moerr.NewInvalidInput("invalid time value %s", s)
+	}
+
+	// handle msec part
+	if len(strs) > 1 {
+		msec, carry, err = getMsec(strs[1], precision)
+		if err != nil {
+			return -1, moerr.NewInvalidInput("invalid time value %s", s)
+		}
+	}
+
+	return FromTimeClock(isNegative, int32(hour), uint8(minute), uint8(sec+uint64(carry)), msec), nil
+}
+
+func FromTimeClock(isNegative bool, hour int32, minute, sec uint8, msec uint32) Time {
+	secs := int64(hour)*secsPerHour + int64(minute)*secsPerMinute + int64(sec)
+	t := secs*microSecsPerSec + int64(msec)
+	if isNegative {
+		return Time(-t)
+	}
+	return Time(t)
+}
+
+func (t Time) ClockFormat() (hour int32, minute, sec int8) {
+	ts := t.sec()
+	h := int32(ts / secsPerHour)
+	m := int8(ts % secsPerHour / secsPerMinute)
+	s := int8(ts % secsPerMinute)
+
+	return h, m, s
+}
+
+func (t Time) Sec() int8 {
+	s := int8((t.sec()) % secsPerMinute)
+	return s
+}
+
+func (t Time) Minute() int8 {
+	m := int8((t.sec()) % secsPerHour / secsPerMinute)
+	return m
+}
+
+func (t Time) Hour() int32 {
+	h := int32((t.sec()) / secsPerHour)
+	return h
+}
+
+// TODO: get Today from local time
+func (t Time) ToDate() Date {
+	return Today(time.UTC)
+}
+
+// TODO: get today from local time
+func (t Time) ToDatetime() Datetime {
+	d := Today(time.UTC)
+	dt := d.ToDatetime()
+	ret := int64(dt) + int64(t)
+	return Datetime(ret)
+}
+
+func (t Time) ConvertToInterval(its string) (int64, error) {
+	switch its {
+	case "microsecond":
+		return int64(t), nil
+	case "second":
+		return t.sec(), nil
+	case "minute":
+		return int64(t) / (microSecsPerSec * secsPerMinute), nil
+	case "hour":
+		return int64(t) / (microSecsPerSec * secsPerHour), nil
+	}
+	return 0, moerr.NewInvalidInput("invalid time input")
+}
+
+func (t Time) sec() int64 {
+	return int64(t) / microSecsPerSec
+}
+
+func validTime(h, m, s uint64) bool {
+	if h < minHourInTime || h > maxHourInTime {
+		return false
+	}
+	if m < minMinuteInHour || m > maxMinuteInHour {
+		return false
+	}
+	if s < minSecondInMinute || s > maxSecondInMinute {
+		return false
+	}
+	return true
+}
