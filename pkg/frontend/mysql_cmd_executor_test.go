@@ -643,6 +643,7 @@ func Test_typeconvert(t *testing.T) {
 			{tp: defines.MYSQL_TYPE_STRING, signed: true},
 			{tp: defines.MYSQL_TYPE_VARCHAR, signed: true},
 			{tp: defines.MYSQL_TYPE_DATE, signed: true},
+			{tp: defines.MYSQL_TYPE_TIME, signed: true},
 			{tp: defines.MYSQL_TYPE_DATETIME, signed: true},
 			{tp: defines.MYSQL_TYPE_JSON, signed: true},
 		}

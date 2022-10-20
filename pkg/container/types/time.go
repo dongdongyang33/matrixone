@@ -32,18 +32,26 @@ var (
 )
 
 func (t Time) String() string {
-	h, m, s := t.ClockFormat()
+	h, m, s, _, isNeg := t.ClockFormat()
+	if isNeg {
+		return fmt.Sprintf("-%02d:%02d:%02d", h, m, s)
+	}
 	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
 }
 
 func (t Time) String2(precision int32) string {
-	h, m, s := t.ClockFormat()
+	h, m, s, ms, isNeg := t.ClockFormat()
 	if precision > 0 {
-		msec := int64(t) % microSecsPerSec
-		msecInstr := fmt.Sprintf("%06d\n", msec)
+		msecInstr := fmt.Sprintf("%06d\n", ms)
 		msecInstr = msecInstr[:precision]
 
+		if isNeg {
+			return fmt.Sprintf("-%02d:%02d:%02d"+"."+msecInstr, h, m, s)
+		}
 		return fmt.Sprintf("%02d:%02d:%02d"+"."+msecInstr, h, m, s)
+	}
+	if isNeg {
+		return fmt.Sprintf("-%02d:%02d:%02d", h, m, s)
 	}
 	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
 }
@@ -173,13 +181,23 @@ func FromTimeClock(isNegative bool, hour int32, minute, sec uint8, msec uint32) 
 	return Time(t)
 }
 
-func (t Time) ClockFormat() (hour int32, minute, sec int8) {
+func (t Time) ClockFormat() (hour int32, minute, sec int8, msec int64, isNeg bool) {
 	ts := t.sec()
+	isNeg = false
+	if ts < 0 {
+		isNeg = true
+		ts = -ts
+	}
 	h := int32(ts / secsPerHour)
 	m := int8(ts % secsPerHour / secsPerMinute)
 	s := int8(ts % secsPerMinute)
+	ms := int64(t) % microSecsPerSec
 
-	return h, m, s
+	return h, m, s, ms, isNeg
+}
+
+func (t Time) MicroSec() int64 {
+	return int64(t) % microSecsPerSec
 }
 
 func (t Time) Sec() int8 {
@@ -197,12 +215,12 @@ func (t Time) Hour() int32 {
 	return h
 }
 
-// TODO: get Today from local time
+// TODO: get Today from local time?
 func (t Time) ToDate() Date {
 	return Today(time.UTC)
 }
 
-// TODO: get today from local time
+// TODO: get today from local time?
 func (t Time) ToDatetime() Datetime {
 	d := Today(time.UTC)
 	dt := d.ToDatetime()

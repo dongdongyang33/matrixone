@@ -18,7 +18,7 @@ syntax = "proto3";
 package metadata; 
 option go_package = "github.com/matrixorigin/matrixone/pkg/pb/metadata";
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "protobuf/gogoproto/gogo.proto";
 
 // DNShardRecord is DN shard metadata describing what is a DN shard. It
 // is internally used by HAKeeper to maintain how many DNs available in

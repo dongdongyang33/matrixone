@@ -22,7 +22,9 @@ GOGOPROTOBUF_VERSION='1.'
 if [ "${GOPATH}" == "" ];then
   GOPATH=`go env GOPATH`
 fi
+PATH=$PATH:$GOPATH/bin
 echo "GOPATH: ${GOPATH}"
+echo "PATH: ${PATH}"
 
 res=$(program_exists goimports)
 echo "res: ${res}"
@@ -91,8 +93,7 @@ if [ "${res}" == "ok" ];then
   echo "protoc-gen-gogofast exits"
 else
   echo "install protoc-gen-gogofast"
-  if [ -f protobuf/ ];then rm -rf protobuf/;fi
-  git clone https://github.com/gogo/protobuf.git
+  if [ ! -d protobuf/ ];then git clone https://github.com/gogo/protobuf.git;fi
   cd protobuf
   git checkout v1.3.2
   cd protoc-gen-gogofast
@@ -105,7 +106,7 @@ for file in `ls $PROTOC_DIR/*.proto`
 do
 	dir=$(basename $file .proto)
 	mkdir -p $PB_DIR/$dir
-	${GOPATH}/bin/protoc -I=.:$PROTOC_DIR:$VENDOR_DIR --gogofast_out=paths=source_relative:./pkg/pb/$dir  $file
+	${GOPATH}/bin/protoc -I=.:$PROTOC_DIR:$VENDOR_DIR --proto_path=${GOPATH}/src/github.com/gogo/protobuf --gogofast_out=paths=source_relative:./pkg/pb/$dir  $file
     goimports -w $PB_DIR/$dir/*pb.go
 done
 

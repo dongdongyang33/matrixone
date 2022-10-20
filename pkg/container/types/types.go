@@ -143,7 +143,7 @@ type BuiltinNumber interface {
 }
 
 type OrderedT interface {
-	constraints.Ordered | Date | Datetime | Timestamp
+	constraints.Ordered | Date | Time | Datetime | Timestamp
 }
 
 type Decimal interface {

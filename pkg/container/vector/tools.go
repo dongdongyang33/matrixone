@@ -169,6 +169,8 @@ func (v *Vector) colFromData() {
 			v.Col = DecodeFixedCol[types.Uuid](v, tlen)
 		case types.T_date:
 			v.Col = DecodeFixedCol[types.Date](v, tlen)
+		case types.T_time:
+			v.Col = DecodeFixedCol[types.Time](v, tlen)
 		case types.T_datetime:
 			v.Col = DecodeFixedCol[types.Datetime](v, tlen)
 		case types.T_timestamp:
