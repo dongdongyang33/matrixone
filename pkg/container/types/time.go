@@ -147,10 +147,10 @@ func ParseTime(s string, precision int32) (Time, error) {
 		if hour, err = strconv.ParseUint(timeArr[0], 10, 32); err != nil {
 			return -1, moerr.NewInvalidInput("invalid time value %s", s)
 		}
-		if minute, err = strconv.ParseUint(timeArr[0], 10, 8); err != nil {
+		if minute, err = strconv.ParseUint(timeArr[1], 10, 8); err != nil {
 			return -1, moerr.NewInvalidInput("invalid time value %s", s)
 		}
-		if sec, err = strconv.ParseUint(timeArr[1], 10, 8); err != nil {
+		if sec, err = strconv.ParseUint(timeArr[2], 10, 8); err != nil {
 			return -1, moerr.NewInvalidInput("invalid time value %s", s)
 		}
 	default:
