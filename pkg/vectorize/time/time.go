@@ -19,6 +19,13 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 )
 
+func DateToTime(xs []types.Date, rs []types.Time) []types.Time {
+	for i, x := range xs {
+		rs[i] = x.ToTime()
+	}
+	return rs
+}
+
 func DatetimeToTime(xs []types.Datetime, rs []types.Time) []types.Time {
 	for i, x := range xs {
 		rs[i] = x.ToTime()

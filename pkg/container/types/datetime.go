@@ -32,6 +32,7 @@ const (
 	NanoSecsPerSec  = 1000000000 // 10^9
 	microSecsPerSec = 1000000    // 10^6
 	MillisecsPerSec = 1000       // 10^3
+	microSecsPerDay = secsPerDay * microSecsPerSec
 	MaxDatetimeYear = 9999
 	MinDatetimeYear = 1
 
@@ -229,7 +230,7 @@ func (dt Datetime) ToDate() Date {
 }
 
 func (dt Datetime) ToTime() Time {
-	return Time(dt % secsPerDay)
+	return Time(dt % microSecsPerDay)
 }
 
 func (dt Datetime) Clock() (hour, minute, sec int8) {
