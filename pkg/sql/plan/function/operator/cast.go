@@ -97,6 +97,8 @@ func doCast(vs []*vector.Vector, proc *process.Process) (*vector.Vector, error) 
 			return CastSameType[float64](lv, rv, proc)
 		case types.T_date:
 			return CastSameType[types.Date](lv, rv, proc)
+		case types.T_time:
+			return CastSameType[types.Time](lv, rv, proc)
 		case types.T_datetime:
 			return CastSameType[types.Datetime](lv, rv, proc)
 		case types.T_timestamp:
