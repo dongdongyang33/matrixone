@@ -17,6 +17,7 @@ package types
 import (
 	"testing"
 
+	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,38 +78,154 @@ func TestTime_ParseTime(t *testing.T) {
 		inputStr  string
 		expected  Time
 		precision int32
+		isErr     bool
 	}{
+		// ==================== Date format: yyyy-mm-dd hh:mm:ss(.msec) ====================
 		{
-			name: "TestString-NoPrecision",
+			name: "TestParse-NoPrecision",
 			// 11:22:33
+			inputStr:  "2022-12-12 11:22:33",
 			expected:  FromTimeClock(false, 11, 22, 33, 0),
 			precision: 0,
+			isErr:     false,
 		},
 		{
-			name: "TestString-Precision",
-			// 11:22:33.123
+			name: "TestParse-Precision01",
+			// 11:22:33
+			inputStr:  "2022-12-12 11:22:33.1234",
 			expected:  FromTimeClock(false, 11, 22, 33, 123000),
-			precision: 5,
+			precision: 3,
+			isErr:     false,
 		},
 		{
-			name: "TestString-ShortterPrecision",
-			// 11:22:33.123
+			name: "TestParse-Precision02",
+			// 11:22:33
+			inputStr:  "2022-12-12 11:22:33.1235",
+			expected:  FromTimeClock(false, 11, 22, 33, 124000),
+			precision: 3,
+			isErr:     false,
+		},
+		{
+			name: "TestParse-DateError",
+			// 11:22:33
+			inputStr: "2022-12-33 11:22:33",
+			isErr:    true,
+		},
+		// ==================== Date format: yyyymmddhhmmss(.msec) ====================
+		{
+			name: "TestParse2-NoPrecision",
+			// 11:22:33
+			inputStr:  "20221212112233",
+			expected:  FromTimeClock(false, 11, 22, 33, 0),
+			precision: 0,
+			isErr:     false,
+		},
+		{
+			name: "TestParse2-Precision01",
+			// 11:22:33
+			inputStr:  "20221212112233.1234",
 			expected:  FromTimeClock(false, 11, 22, 33, 123000),
-			precision: 2,
+			precision: 3,
+			isErr:     false,
 		},
 		{
-			name: "TestString-Minus",
-			// 11:22:33.125000
-			expected:  FromTimeClock(true, 11, 22, 33, 125000),
-			precision: 2,
+			name: "TestParse2-Precision02",
+			// 11:22:33
+			inputStr:  "20221212112233.1235",
+			expected:  FromTimeClock(false, 11, 22, 33, 124000),
+			precision: 3,
+			isErr:     false,
+		},
+		{
+			name: "TestParse2-DateError",
+			// 11:22:33
+			inputStr: "20221233112233",
+			isErr:    true,
+		},
+		// ==================== Time format: hh:mm:ss(.msec) ====================
+		{
+			name: "TestParse3-NoPrecision",
+			// 11:22:33
+			inputStr:  "11:22:33",
+			expected:  FromTimeClock(false, 11, 22, 33, 0),
+			precision: 0,
+			isErr:     false,
+		},
+		{
+			name: "TestParse3-NoPrecision2",
+			// 11:22:33
+			inputStr:  "555:22:33",
+			expected:  FromTimeClock(false, 555, 22, 33, 0),
+			precision: 0,
+			isErr:     false,
+		},
+		{
+			name: "TestParse3-NoPrecision2",
+			// 11:22:33
+			inputStr:  "-555:22:33",
+			expected:  FromTimeClock(true, 555, 22, 33, 0),
+			precision: 0,
+			isErr:     false,
+		},
+		{
+			name: "TestParse3-Precision",
+			// 11:22:33
+			inputStr:  "11:22:33.1234",
+			expected:  FromTimeClock(false, 11, 22, 33, 123000),
+			precision: 3,
+			isErr:     false,
+		},
+		{
+			name: "TestParse3-Precision",
+			// 11:22:33
+			inputStr:  "11:22:33.1235",
+			expected:  FromTimeClock(false, 11, 22, 33, 124000),
+			precision: 3,
+			isErr:     false,
+		},
+		// ==================== Time format: hhmmss(.msec) ====================
+		{
+			name: "TestParse4-NoPrecision",
+			// 11:22:33
+			inputStr:  "112",
+			expected:  FromTimeClock(false, 0, 1, 12, 0),
+			precision: 0,
+			isErr:     false,
+		},
+		{
+			name: "TestParse4-NoPrecision",
+			// 11:22:33
+			inputStr:  "-112",
+			expected:  FromTimeClock(true, 0, 1, 12, 0),
+			precision: 0,
+			isErr:     false,
+		},
+		{
+			name: "TestParse4-NoPrecision",
+			// 11:22:33
+			inputStr:  "-11232",
+			expected:  FromTimeClock(true, 0, 1, 12, 32),
+			precision: 0,
+			isErr:     false,
+		},
+		{
+			name: "TestParse4-Precision",
+			// 11:22:33
+			inputStr:  "-11232",
+			expected:  FromTimeClock(true, 0, 1, 12, 32),
+			precision: 0,
+			isErr:     false,
 		},
 	}
 
 	for _, v := range testCases {
 		// only 1 input
-		strActual := v.expected.String()
-		require.Equal(t, strActual, v.strExpect)
-		str2Actual := v.expected.String2(v.precision)
-		require.Equal(t, str2Actual, v.str2Expect)
+		parsed, err := ParseTime(v.inputStr, v.precision)
+		if !v.isErr {
+			require.NoError(t, err)
+			require.Equal(t, parsed, v.expected)
+		} else {
+			require.Equal(t, err, moerr.NewInvalidInput("invalid time value %s", v.inputStr))
+		}
 	}
 }
