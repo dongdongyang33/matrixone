@@ -1914,12 +1914,13 @@ func CastTimeAsDatetime(lv, rv *vector.Vector, proc *process.Process) (*vector.V
 
 func CastDatetimeAsTime(lv, rv *vector.Vector, proc *process.Process) (*vector.Vector, error) {
 	lvs := vector.MustTCols[types.Datetime](lv)
+	precision := rv.Typ.Precision
 	if lv.IsScalar() {
 		if lv.IsScalarNull() {
 			return proc.AllocConstNullVector(rv.Typ, lv.Length()), nil
 		}
 		rs := make([]types.Time, 1)
-		if _, err := binary.DatetimeToTime(lvs, rs); err != nil {
+		if _, err := binary.DatetimeToTime(lvs, rs, precision); err != nil {
 			return nil, err
 		}
 		return vector.NewConstFixed(rv.Typ, lv.Length(), rs[0], proc.Mp()), nil
@@ -1930,7 +1931,7 @@ func CastDatetimeAsTime(lv, rv *vector.Vector, proc *process.Process) (*vector.V
 		return nil, err
 	}
 	rs := vector.MustTCols[types.Time](vec)
-	if _, err := binary.DatetimeToTime(lvs, rs); err != nil {
+	if _, err := binary.DatetimeToTime(lvs, rs, precision); err != nil {
 		return nil, err
 	}
 	return vec, nil

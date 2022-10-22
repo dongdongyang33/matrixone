@@ -41,6 +41,10 @@ const (
 	minSecondInMinute, maxSecondInMinute = 0, 59
 )
 
+var (
+	precisionVal = []Datetime{1000000, 100000, 10000, 1000, 100, 10, 1}
+)
+
 // The Datetime type holds number of microseconds since January 1, year 1 in Gregorian calendar
 
 func (dt Datetime) String() string {
@@ -229,8 +233,11 @@ func (dt Datetime) ToDate() Date {
 	return Date((dt.sec()) / secsPerDay)
 }
 
-func (dt Datetime) ToTime() Time {
-	return Time(dt % microSecsPerDay)
+func (dt Datetime) ToTime(precision int32) Time {
+	mst := dt % microSecsPerDay
+	ret := mst - mst%precisionVal[precision]
+
+	return Time(ret)
 }
 
 func (dt Datetime) Clock() (hour, minute, sec int8) {

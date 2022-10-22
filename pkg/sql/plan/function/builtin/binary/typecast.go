@@ -750,9 +750,9 @@ func datetimeToBytes(xs []types.Datetime, rs []string, precision int32) ([]strin
 	}
 	return rs, nil
 }
-func datetimeToTime(xs []types.Datetime, rs []types.Time) ([]types.Time, error) {
+func datetimeToTime(xs []types.Datetime, rs []types.Time, precision int32) ([]types.Time, error) {
 	for i, x := range xs {
-		rs[i] = x.ToTime()
+		rs[i] = x.ToTime(precision)
 	}
 	return rs, nil
 }

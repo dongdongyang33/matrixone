@@ -23,7 +23,7 @@ import (
 
 func TimeToTime(vectors []*vector.Vector, proc *process.Process) (*vector.Vector, error) {
 	inputVector := vectors[0]
-	resultType := types.Type{Oid: types.T_time, Size: 8}
+	resultType := types.Type{Oid: types.T_time, Size: 8, Precision: inputVector.Typ.Precision}
 	inputValues := vector.MustTCols[types.Time](inputVector)
 	if inputVector.IsScalar() {
 		if inputVector.ConstVectorIsNull() {
@@ -47,7 +47,8 @@ func TimeToTime(vectors []*vector.Vector, proc *process.Process) (*vector.Vector
 
 func DatetimeToTime(vectors []*vector.Vector, proc *process.Process) (*vector.Vector, error) {
 	inputVector := vectors[0]
-	resultType := types.Type{Oid: types.T_time, Size: 8}
+	inputPrecision := inputVector.Typ.Precision
+	resultType := types.Type{Oid: types.T_time, Size: 8, Precision: inputPrecision}
 	inputValues := vector.MustTCols[types.Datetime](inputVector)
 	if inputVector.IsScalar() {
 		if inputVector.ConstVectorIsNull() {
@@ -55,7 +56,7 @@ func DatetimeToTime(vectors []*vector.Vector, proc *process.Process) (*vector.Ve
 		}
 		resultVector := vector.NewConst(resultType, 1)
 		resultValues := make([]types.Time, 1)
-		vector.SetCol(resultVector, time.DatetimeToTime(inputValues, resultValues))
+		vector.SetCol(resultVector, time.DatetimeToTime(inputValues, resultValues, inputPrecision))
 		return resultVector, nil
 	} else {
 		resultVector, err := proc.AllocVectorOfRows(resultType, int64(len(inputValues)), inputVector.Nsp)
@@ -63,7 +64,7 @@ func DatetimeToTime(vectors []*vector.Vector, proc *process.Process) (*vector.Ve
 			return nil, err
 		}
 		resultValues := vector.MustTCols[types.Time](resultVector)
-		time.DatetimeToTime(inputValues, resultValues)
+		time.DatetimeToTime(inputValues, resultValues, inputPrecision)
 		return resultVector, nil
 	}
 }

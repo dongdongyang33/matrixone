@@ -73,16 +73,16 @@ func TestTime(t *testing.T) {
 			isConst: false,
 			testTyp: types.T_datetime.ToType(),
 			proc:    testutil.NewProc(),
-			want:    []types.Time{types.FromTimeClock(false, 16, 22, 44, 1235)},
+			want:    []types.Time{types.FromTimeClock(false, 16, 22, 44, 123400)},
 		},
 		{
 			name:    "TimeTest-FromDatetime03",
 			input:   "20220101224433.123456",
-			precise: 0,
+			precise: 6,
 			isConst: false,
 			testTyp: types.T_datetime.ToType(),
 			proc:    testutil.NewProc(),
-			want:    []types.Time{types.FromTimeClock(false, 22, 44, 33, 0)},
+			want:    []types.Time{types.FromTimeClock(false, 22, 44, 33, 123456)},
 		},
 
 		//============================== DateString ==============================
@@ -103,7 +103,7 @@ func TestTime(t *testing.T) {
 			isConst: false,
 			testTyp: types.T_varchar.ToType(),
 			proc:    testutil.NewProc(),
-			want:    []types.Time{types.FromTimeClock(false, 16, 22, 44, 124)},
+			want:    []types.Time{types.FromTimeClock(false, 16, 22, 44, 123500)},
 		},
 		{
 			name:    "TimeTest-FromDateString03",
@@ -125,12 +125,12 @@ func TestTime(t *testing.T) {
 		},
 		{
 			name:    "TimeTest-FromDateString05",
-			input:   "-233",
+			input:   "-233.123",
 			precise: 6,
 			isConst: false,
 			testTyp: types.T_varchar.ToType(),
 			proc:    testutil.NewProc(),
-			want:    []types.Time{types.FromTimeClock(true, 0, 2, 33, 0)},
+			want:    []types.Time{types.FromTimeClock(true, 0, 2, 33, 123000)},
 		},
 	}
 
@@ -171,6 +171,7 @@ func makeVectorForTimeTest(str string, precision int32, isConst bool, typ types.
 				return nil, err
 			}
 			vec[0] = vector.NewConstFixed(types.T_datetime.ToType(), 1, data, testutil.TestUtilMp)
+			vec[0].Typ.Precision = precision
 		case types.T_char, types.T_varchar:
 			vec[0] = vector.NewConstString(types.Type{Oid: types.T_varchar, Size: 26}, 1, str, testutil.TestUtilMp)
 		}
@@ -182,6 +183,7 @@ func makeVectorForTimeTest(str string, precision int32, isConst bool, typ types.
 			vec[0] = testutil.MakeDateVector(input, nil)
 		case types.T_datetime:
 			vec[0] = testutil.MakeDateTimeVector(input, nil)
+			vec[0].Typ.Precision = precision
 		case types.T_char:
 			vec[0] = testutil.MakeCharVector(input, nil)
 		case types.T_varchar:

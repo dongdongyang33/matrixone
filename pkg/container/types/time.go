@@ -31,6 +31,7 @@ var (
 	FillString = []string{"", "0", "00", "000", "0000", "00000", "000000", "0000000"}
 )
 
+// no msec part
 func (t Time) String() string {
 	h, m, s, _, isNeg := t.ClockFormat()
 	if isNeg {
@@ -40,20 +41,17 @@ func (t Time) String() string {
 }
 
 func (t Time) String2(precision int32) string {
+	var symbol string
 	h, m, s, ms, isNeg := t.ClockFormat()
+	if isNeg {
+		symbol = "-"
+	}
 	if precision > 0 {
 		msecInstr := fmt.Sprintf("%06d\n", ms)
 		msecInstr = msecInstr[:precision]
-
-		if isNeg {
-			return fmt.Sprintf("-%02d:%02d:%02d"+"."+msecInstr, h, m, s)
-		}
-		return fmt.Sprintf("%02d:%02d:%02d"+"."+msecInstr, h, m, s)
+		return fmt.Sprintf("%s%02d:%02d:%02d"+"."+msecInstr, symbol, h, m, s)
 	}
-	if isNeg {
-		return fmt.Sprintf("-%02d:%02d:%02d", h, m, s)
-	}
-	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+	return fmt.Sprintf("%s%02d:%02d:%02d", symbol, h, m, s)
 }
 
 // The Time type holds number of microseconds for hh:mm:ss(.msec)
@@ -82,28 +80,26 @@ func ParseTime(s string, precision int32) (Time, error) {
 
 	// seperate to date&time and msec parts
 	strs := strings.Split(s, ".")
-	var timeString string
+	timeString := strs[0]
 	isNegative := false
 
 	// handle date&time part
 	// If the input string have date, make sure it is valid.
-	if len(strs[0]) >= 14 {
+	if len(timeString) >= 14 {
 		// The minest length of yyyy-mm-dd hh:mm:ss or yyyymmddhhmmss
 		// must greater than 14 and it can be handled like Datetime
 		dt, err := ParseDatetime(s, precision)
 		if err != nil {
 			return -1, moerr.NewInvalidInput("invalid time value %s", s)
 		}
-		return dt.ToTime(), nil
+		return dt.ToTime(precision), nil
 	} else {
 		// if length is less than 14 it must be format:
 		// (-)hh:mm:ss(.msec) / (-)hhh:mm:ss(.msec)
 		// (-)hhmmss(.msec) / (-)hhhmmss(.msec)
 		if s[0] == '-' {
 			isNegative = true
-			timeString = strs[0][1:]
-		} else {
-			timeString = strs[0]
+			timeString = timeString[1:]
 		}
 	}
 
@@ -181,17 +177,17 @@ func FromTimeClock(isNegative bool, hour int32, minute, sec uint8, msec uint32) 
 	return Time(t)
 }
 
+// ClockFormat: symbol part/hour part/minute part/second part/msecond part
 func (t Time) ClockFormat() (hour int32, minute, sec int8, msec int64, isNeg bool) {
-	ts := t.sec()
-	isNeg = false
-	if ts < 0 {
+	if t < 0 {
 		isNeg = true
-		ts = -ts
+		t = -t
 	}
+	ts := t.sec()
 	h := int32(ts / secsPerHour)
 	m := int8(ts % secsPerHour / secsPerMinute)
 	s := int8(ts % secsPerMinute)
-	ms := int64(t) % microSecsPerSec
+	ms := int64(t % microSecsPerSec)
 
 	return h, m, s, ms, isNeg
 }
@@ -228,6 +224,7 @@ func (t Time) ToDatetime() Datetime {
 	return Datetime(ret)
 }
 
+// TODO: confirm need or not?
 func (t Time) ConvertToInterval(its string) (int64, error) {
 	switch its {
 	case "microsecond":
