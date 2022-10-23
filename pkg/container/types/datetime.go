@@ -233,6 +233,8 @@ func (dt Datetime) ToDate() Date {
 	return Date((dt.sec()) / secsPerDay)
 }
 
+// We need to truncate the part after precision position when cast
+// between different precision.
 func (dt Datetime) ToTime(precision int32) Time {
 	mst := dt % microSecsPerDay
 	ret := mst - mst%precisionVal[precision]

@@ -63,12 +63,14 @@ func TestTime_StringAndString2(t *testing.T) {
 		},
 	}
 
-	for _, v := range testCases {
-		// only 1 input
-		strActual := v.input.String()
-		require.Equal(t, strActual, v.strExpect)
-		str2Actual := v.input.String2(v.precision)
-		require.Equal(t, str2Actual, v.str2Expect)
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			// only 1 input
+			strActual := c.input.String()
+			require.Equal(t, strActual, c.strExpect)
+			str2Actual := c.input.String2(c.precision)
+			require.Equal(t, str2Actual, c.str2Expect)
+		})
 	}
 }
 
@@ -185,7 +187,15 @@ func TestTime_ParseTime(t *testing.T) {
 		},
 		// ==================== Time format: hhmmss(.msec) ====================
 		{
-			name: "TestParse4-NoPrecision",
+			name: "TestParse4-NoPrecision01",
+			// 11:22:33
+			inputStr:  "1",
+			expected:  FromTimeClock(false, 0, 0, 1, 0),
+			precision: 0,
+			isErr:     false,
+		},
+		{
+			name: "TestParse4-NoPrecision02",
 			// 11:22:33
 			inputStr:  "112",
 			expected:  FromTimeClock(false, 0, 1, 12, 0),
@@ -193,7 +203,7 @@ func TestTime_ParseTime(t *testing.T) {
 			isErr:     false,
 		},
 		{
-			name: "TestParse4-NoPrecision",
+			name: "TestParse4-NoPrecision03",
 			// 11:22:33
 			inputStr:  "-112",
 			expected:  FromTimeClock(true, 0, 1, 12, 0),
@@ -201,31 +211,42 @@ func TestTime_ParseTime(t *testing.T) {
 			isErr:     false,
 		},
 		{
-			name: "TestParse4-NoPrecision",
+			name: "TestParse4-NoPrecision04",
 			// 11:22:33
 			inputStr:  "-11232",
-			expected:  FromTimeClock(true, 0, 1, 12, 32),
+			expected:  FromTimeClock(true, 1, 12, 32, 0),
 			precision: 0,
 			isErr:     false,
 		},
 		{
 			name: "TestParse4-Precision",
 			// 11:22:33
-			inputStr:  "-11232",
-			expected:  FromTimeClock(true, 0, 1, 12, 32),
-			precision: 0,
+			inputStr:  "-11232.123",
+			expected:  FromTimeClock(true, 1, 12, 32, 123000),
+			precision: 3,
+			isErr:     false,
+		},
+		{
+			name: "TestParse4-Precision",
+			// 11:22:33
+			inputStr:  "11232.1235",
+			expected:  FromTimeClock(false, 1, 12, 32, 124000),
+			precision: 3,
 			isErr:     false,
 		},
 	}
 
-	for _, v := range testCases {
-		// only 1 input
-		parsed, err := ParseTime(v.inputStr, v.precision)
-		if !v.isErr {
-			require.NoError(t, err)
-			require.Equal(t, parsed, v.expected)
-		} else {
-			require.Equal(t, err, moerr.NewInvalidInput("invalid time value %s", v.inputStr))
-		}
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			// only 1 input
+			parsed, err := ParseTime(c.inputStr, c.precision)
+			if !c.isErr {
+				require.NoError(t, err)
+				require.Equal(t, parsed, c.expected)
+			} else {
+				require.Equal(t, err, moerr.NewInvalidInput("invalid time value %s", c.inputStr))
+			}
+		})
+
 	}
 }
