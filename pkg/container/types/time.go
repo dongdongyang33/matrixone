@@ -211,17 +211,20 @@ func (t Time) Hour() int32 {
 	return h
 }
 
-// TODO: get Today from local time?
+// TODO: Get Today from local time?
 func (t Time) ToDate() Date {
 	return Today(time.UTC)
 }
 
-// TODO: get today from local time?
-func (t Time) ToDatetime() Datetime {
+// We need to truncate the part after precision position when cast
+// between different precision.
+func (t Time) ToDatetime(precision int32) Datetime {
+	// TODO: Get today from local time?
 	d := Today(time.UTC)
 	dt := d.ToDatetime()
-	ret := int64(dt) + int64(t)
-	return Datetime(ret)
+	ret := Datetime(int64(dt) + int64(t))
+	ret = ret - ret%precisionVal[precision]
+	return ret
 }
 
 // TODO: confirm need or not?

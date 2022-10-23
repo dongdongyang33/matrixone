@@ -621,6 +621,7 @@ func Test_typeconvert(t *testing.T) {
 			types.T_char,
 			types.T_varchar,
 			types.T_date,
+			types.T_time,
 			types.T_datetime,
 			types.T_json,
 		}

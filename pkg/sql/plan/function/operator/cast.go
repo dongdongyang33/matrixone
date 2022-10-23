@@ -1291,7 +1291,6 @@ func CastVarcharAsDate(lv, rv *vector.Vector, proc *process.Process) (*vector.Ve
 
 func CastVarcharAsTime(lv, rv *vector.Vector, proc *process.Process) (*vector.Vector, error) {
 	vs := vector.MustStrCols(lv)
-
 	if lv.IsScalar() {
 		if lv.IsScalarNull() {
 			return proc.AllocConstNullVector(rv.Typ, lv.Length()), nil
@@ -1895,7 +1894,7 @@ func CastTimeAsDatetime(lv, rv *vector.Vector, proc *process.Process) (*vector.V
 			return proc.AllocConstNullVector(rv.Typ, lv.Length()), nil
 		}
 		rs := make([]types.Datetime, 1)
-		if _, err := binary.TimeToDatetime(lvs, rs); err != nil {
+		if _, err := binary.TimeToDatetime(lvs, rs, rv.Typ.Precision); err != nil {
 			return nil, err
 		}
 		return vector.NewConstFixed(rv.Typ, lv.Length(), rs[0], proc.Mp()), nil
@@ -1906,7 +1905,7 @@ func CastTimeAsDatetime(lv, rv *vector.Vector, proc *process.Process) (*vector.V
 		return nil, err
 	}
 	rs := vector.MustTCols[types.Datetime](vec)
-	if _, err := binary.TimeToDatetime(lvs, rs); err != nil {
+	if _, err := binary.TimeToDatetime(lvs, rs, rv.Typ.Precision); err != nil {
 		return nil, err
 	}
 	return vec, nil
