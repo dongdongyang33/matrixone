@@ -1828,6 +1828,15 @@ var builtins = map[int]Functions{
 				ReturnTyp: types.T_timestamp,
 				Fn:        multi.TimeStampAdd,
 			},
+			{
+				Index:     5,
+				Volatile:  true,
+				Flag:      plan.Function_STRICT,
+				Layout:    STANDARD_FUNCTION,
+				Args:      []types.T{types.T_time, types.T_int64, types.T_int64},
+				ReturnTyp: types.T_time,
+				Fn:        multi.TimeAdd,
+			},
 		},
 	},
 	DATE_SUB: {

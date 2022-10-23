@@ -6963,7 +6963,7 @@ time_type:
             },
         }
     }
-|   TIME length_opt
+|   TIME timestamp_option_opt
     {
         locale := ""
         if $2 < 0 || $2 > 6 {

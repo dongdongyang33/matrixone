@@ -227,13 +227,35 @@ func (t Time) ToDatetime(precision int32) Datetime {
 	return ret
 }
 
-// TODO: confirm need or not?
+// AddInterval now date or time use the function to add/sub date,
+// return type bool means the if the time is valid
+func (t Time) AddInterval(nums int64, its IntervalType) (Time, bool) {
+	switch its {
+	case Second:
+		nums *= microSecsPerSec
+	case Minute:
+		nums *= microSecsPerSec * secsPerMinute
+	case Hour:
+		nums *= microSecsPerSec * secsPerHour
+	}
+	newTime := t + Time(nums)
+	// valid
+	h := newTime.Hour()
+	if h < 0 {
+		h = -h
+	}
+	if !validTime(uint64(h), 0, 0) {
+		return 0, false
+	}
+	return newTime, true
+}
+
 func (t Time) ConvertToInterval(its string) (int64, error) {
 	switch its {
 	case "microsecond":
 		return int64(t), nil
 	case "second":
-		return t.sec(), nil
+		return int64(t) / microSecsPerSec, nil
 	case "minute":
 		return int64(t) / (microSecsPerSec * secsPerMinute), nil
 	case "hour":
