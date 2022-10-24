@@ -211,7 +211,7 @@ func (t Time) Hour() int32 {
 	return h
 }
 
-// TODO: Get Today from local time?
+// TODO: Get Today date from local time?
 func (t Time) ToDate() Date {
 	return Today(time.UTC)
 }
@@ -219,12 +219,19 @@ func (t Time) ToDate() Date {
 // We need to truncate the part after precision position when cast
 // between different precision.
 func (t Time) ToDatetime(precision int32) Datetime {
-	// TODO: Get today from local time?
+	// TODO: Get today date from local time?
 	d := Today(time.UTC)
 	dt := d.ToDatetime()
-	ret := Datetime(int64(dt) + int64(t))
-	ret = ret - ret%precisionVal[precision]
-	return ret
+	if precision == 6 {
+		return Datetime(int64(dt) + int64(t))
+	}
+
+	newTime := Datetime(int64(dt) + int64(t))
+	base := newTime / precisionVal[precision]
+	if newTime%precisionVal[precision]/precisionVal[precision+1] >= 5 { // check carry
+		base += 1
+	}
+	return base * precisionVal[precision]
 }
 
 // AddInterval now date or time use the function to add/sub date,
@@ -239,6 +246,7 @@ func (t Time) AddInterval(nums int64, its IntervalType) (Time, bool) {
 		nums *= microSecsPerSec * secsPerHour
 	}
 	newTime := t + Time(nums)
+
 	// valid
 	h := newTime.Hour()
 	if h < 0 {

@@ -1819,18 +1819,18 @@ func (mp *MysqlProtocolImpl) makeResultSetBinaryRow(data []byte, mrs *MysqlResul
 			if value, err := mrs.GetString(rowIdx, i); err != nil {
 				return nil, err
 			} else {
-				var dt types.Time
+				var t types.Time
 				var err error
 				idx := strings.Index(value, ".")
 				if idx == -1 {
-					dt, err = types.ParseTime(value, 0)
+					t, err = types.ParseTime(value, 0)
 				} else {
-					dt, err = types.ParseTime(value, int32(len(value)-idx-1))
+					t, err = types.ParseTime(value, int32(len(value)-idx-1))
 				}
 				if err != nil {
 					data = mp.appendStringLenEnc(data, value)
 				} else {
-					data = mp.appendTime(data, dt)
+					data = mp.appendTime(data, t)
 				}
 			}
 			if value, err := mrs.GetValue(rowIdx, i); err != nil {

@@ -236,10 +236,19 @@ func (dt Datetime) ToDate() Date {
 // We need to truncate the part after precision position when cast
 // between different precision.
 func (dt Datetime) ToTime(precision int32) Time {
-	mst := dt % microSecsPerDay
-	ret := mst - mst%precisionVal[precision]
+	if precision == 6 {
+		return Time(dt % microSecsPerDay)
+	}
 
-	return Time(ret)
+	// truncate the date part
+	ms := dt % microSecsPerDay
+
+	base := ms / precisionVal[precision]
+	if ms%precisionVal[precision]/precisionVal[precision+1] >= 5 { // check carry
+		base += 1
+	}
+
+	return Time(base * precisionVal[precision])
 }
 
 func (dt Datetime) Clock() (hour, minute, sec int8) {
