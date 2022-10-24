@@ -73,7 +73,7 @@ func TestTime(t *testing.T) {
 			isConst: false,
 			testTyp: types.T_datetime.ToType(),
 			proc:    testutil.NewProc(),
-			want:    []types.Time{types.FromTimeClock(false, 16, 22, 44, 123400)},
+			want:    []types.Time{types.FromTimeClock(false, 16, 22, 44, 123500)},
 		},
 		{
 			name:    "TimeTest-FromDatetime03",
