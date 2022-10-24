@@ -1,9 +1,3 @@
--- @suite                                                                                                                                                                                
--- @case
--- @desc:test for decimal datatype
--- @label:bvt
-
-#Basic insert table test with format yyyy-mm-dd hh:mm:ss(.msec)
 drop table if exists t1;
 create table t1(t time(3));
 insert into t1 values("100:00:20");
@@ -12,24 +6,44 @@ insert into t1 values("2012-12-12 12:00:20");
 insert into t1 values("2012-12-12 12:00:20.1234");
 insert into t1 values("2012-12-12 12:00:20.1235");
 select * from t1;
+t 
+100:00:20.000
+-800:59:59.000
+12:00:20.000
+12:00:20.123
+12:00:20.124
 insert into t1 values("839:00:00");
-
-#Basic insert table test with format yyyymmddhhmmss(.msec)
+truncated type TIME value 839:00:00 for column t, 1
 drop table if exists t1;
 create table t1(t time(3));
 insert into t1 values("20201122112233");
 insert into t1 values("20201122112233.1234");
 insert into t1 values("20201122112233.1235");
 select * from t1;
-
-#Basic insert table test with format different length input 
+t 
+12:00:20.000
+12:00:20.123
+12:00:20.124
 drop table if exists t1;
 create table t1(t time(3));
 insert into t1 values("1"), ("11"), ("112"), ("1122"), ("11223"),("112233"),("-1"), ("-11"), ("-112"), ("-1122"), ("-11223"),("-112233");
 insert into t1 values("112233.4445"),("-112233.4445");
 select * from t1;
-
-#Date to time cast
+t
+00:00:01.000
+00:00:11.000
+00:01:12.000
+00:11:22.000
+01:12:23.000
+11:22:33.000
+-00:00:01.000
+-00:00:11.000
+-00:01:12.000
+-00:11:22.000
+-01:12:23.000
+-11:22:33.000
+11:22:33.445
+-11:22:33.445
 drop table if exists t1;
 drop table if exists myd;
 create table myd(d date);
@@ -37,8 +51,9 @@ create table t1(t time);
 insert into myd values("2020-12-12"), ("20201212");
 insert into t1 select * from myd;
 select * from t1;
-
-#Datetime to time cast
+t
+00:00:00
+00:00:00
 drop table if exists t1;
 drop table if exists mydt;
 create table mydt(d datetime(6));
@@ -47,20 +62,47 @@ insert into mydt values("2020-12-12 11:22:33"), ("2020-12-12 11:22:33.4444"), ("
 insert into mydt values ("20221212112233"), ("20221212112233.5555");
 insert into t1 select * from mydt;
 select * from t1;
-
-#Test cases of query without table
+t
+11:22:33.000
+11:22:33.444
+11:22:33.445
+11:22:33.000
+11:22:33.556
 select time("2012-12-12 12:00:20");
+time(2012-12-12 12:00:20)
+12:00:20
 select time("20201122112233");
+time(20201122112233)
+11:22:33
 select time("11223");
+time(11223)
+01:12:23
 select cast('11:22:33.445566' as time(0));
+cast(11:22:33.445566 as time(0))
+11:22:33
 select cast('11:22:33.445566' as time(3));
+cast(11:22:33.445566 as time(3))
+11:22:33.446
 select cast('123.445' as time(6));
-
-#DateAdd
+cast(123.445 as time(6))
+00:01:23.445000
 select adddate(time'00:00:00', interval 1 hour);
+adddate(time(00:00:00), interval(1, hour))
+01:00:00
 select adddate(time'00:00:00', interval 1 minute);
+adddate(time(00:00:00), interval(1, minute))
+0:01:00
 select adddate(time'00:00:00', interval 1 second);
+adddate(time(00:00:00), interval(1, second))
+00:00:01
 select adddate(time'800:00:00', interval 1 hour);
+adddate(time(800:00:00), interval(1, hour))
+801:00:00
 select adddate(time'838:00:00', interval 1 hour);
+data out of range: data type time,
 select adddate(time'100:00:00', interval -100 minute);
+adddate(time(100:00:00), interval(-100, minute))
+98:20:00
 select adddate(time'100:00:00', interval -1000 second);
+adddate(time(100:00:00), interval(-1000, second))
+99:43:20
