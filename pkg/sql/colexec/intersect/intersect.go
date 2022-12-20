@@ -79,6 +79,7 @@ func Call(idx int, proc *process.Process, argument any) (bool, error) {
 // build hash table
 func (c *container) buildHashTable(proc *process.Process, analyse process.Analyze, idx int) error {
 	for {
+		// some block time
 		btc := <-proc.Reg.MergeReceivers[idx].Ch
 
 		// last batch of block

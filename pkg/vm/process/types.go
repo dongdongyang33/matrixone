@@ -32,6 +32,9 @@ type Analyze interface {
 	Alloc(int64)
 	Input(*batch.Batch)
 	Output(*batch.Batch)
+	ActualInput(*batch.Batch)
+	ActualOutput(*batch.Batch)
+	AddWaitingTime(time.Time)
 }
 
 // WaitRegister channel
@@ -86,6 +89,8 @@ type SessionInfo struct {
 
 // AnalyzeInfo  analyze information for query
 type AnalyzeInfo struct {
+	formID int32
+	Op     string
 	// NodeId, index of query's node list
 	NodeId int32
 	// InputRows, number of rows accepted by node
@@ -100,6 +105,13 @@ type AnalyzeInfo struct {
 	OutputSize int64
 	// MemorySize, memory alloc by node
 	MemorySize int64
+
+	ActualInputRows  int64
+	ActualOutputRows int64
+	ActualInputSize  int64
+	ActualOutputSize int64
+
+	WaitingTime int64
 }
 
 // Process contains context used in query execution
@@ -151,8 +163,9 @@ func (proc *Process) GetLastInsertID() uint64 {
 }
 
 type analyze struct {
-	start    time.Time
-	analInfo *AnalyzeInfo
+	start       time.Time
+	waitingTime int64
+	analInfo    *AnalyzeInfo
 }
 
 func (si *SessionInfo) GetUser() string {

@@ -92,6 +92,8 @@ func (c *Compile) Run(_ uint64) (err error) {
 
 	// XXX PrintScope has a none-trivial amount of logging
 	// PrintScope(nil, []*Scope{c.scope})
+	println(DebugShowScopes([]*Scope{c.scope}))
+
 	switch c.scope.Magic {
 	case Normal:
 		defer c.fillAnalyzeInfo()
@@ -236,6 +238,7 @@ func (c *Compile) compileQuery(ctx context.Context, qry *plan.Query) (*Scope, er
 }
 
 func (c *Compile) compileTpQuery(qry *plan.Query, ss []*Scope) (*Scope, error) {
+	// don't know the analyze id
 	rs := c.newMergeScope(ss)
 	switch qry.StmtType {
 	case plan.Query_DELETE:
@@ -287,6 +290,7 @@ func (c *Compile) compileTpQuery(qry *plan.Query, ss []*Scope) (*Scope, error) {
 }
 
 func (c *Compile) compileApQuery(qry *plan.Query, ss []*Scope) (*Scope, error) {
+	// don't know the analyze id
 	rs := c.newMergeScope(ss)
 	switch qry.StmtType {
 	case plan.Query_DELETE:
@@ -704,6 +708,7 @@ func (c *Compile) compileProjection(n *plan.Node, ss []*Scope) []*Scope {
 	return ss
 }
 
+// no analyze index here
 func (c *Compile) compileUnion(n *plan.Node, ss []*Scope, children []*Scope, ns []*plan.Node) []*Scope {
 	ss = append(ss, children...)
 	rs := c.newScopeList(1, int(n.Stats.Cost))
@@ -713,7 +718,8 @@ func (c *Compile) compileUnion(n *plan.Node, ss []*Scope, children []*Scope, ns 
 	for i := range rs {
 		ch := c.newMergeScope(dupScopeList(ss))
 		ch.appendInstruction(vm.Instruction{
-			Op: vm.Connector,
+			Op:  vm.Connector,
+			Idx: c.anal.curr,
 			Arg: &connector.Argument{
 				Reg: rs[i].Proc.Reg.MergeReceivers[0],
 			},
@@ -1092,11 +1098,14 @@ func (c *Compile) newScopeList(childrenCount int, rows int) []*Scope {
 }
 
 func (c *Compile) newScopeListWithNode(mcpu, childrenCount int) []*Scope {
+	// childrenCount is use for register channle
 	ss := make([]*Scope, mcpu)
 	for i := range ss {
 		ss[i] = new(Scope)
 		ss[i].Magic = Remote
 		ss[i].Proc = process.NewWithAnalyze(c.proc, c.ctx, childrenCount, c.anal.Nodes())
+		// no analyze index?
+		// why merge here?
 		ss[i].Instructions = append(ss[i].Instructions, vm.Instruction{
 			Op:  vm.Merge,
 			Arg: &merge.Argument{},
@@ -1163,7 +1172,8 @@ func (c *Compile) newLeftScope(s *Scope, ss []*Scope) *Scope {
 	rs := &Scope{
 		Magic: Merge,
 	}
-	rs.appendInstruction(vm.Instruction{
+	// no instruction in ss so can't get the analyze index
+	rs.appendInstruction(vm.Instruction{ // no index
 		Op:  vm.Merge,
 		Arg: &merge.Argument{},
 	})
@@ -1188,6 +1198,7 @@ func (c *Compile) newRightScope(s *Scope, ss []*Scope) *Scope {
 	})
 	rs.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
+		Idx: s.Instructions[0].Idx,
 		Arg: constructDispatch(true, extraRegisters(ss, 1)),
 	})
 	rs.IsEnd = true
@@ -1234,7 +1245,12 @@ func (c *Compile) fillAnalyzeInfo() {
 		c.anal.qry.Nodes[i].AnalyzeInfo.OutputSize = atomic.LoadInt64(&anal.OutputSize)
 		c.anal.qry.Nodes[i].AnalyzeInfo.TimeConsumed = atomic.LoadInt64(&anal.TimeConsumed)
 		c.anal.qry.Nodes[i].AnalyzeInfo.MemorySize = atomic.LoadInt64(&anal.MemorySize)
+		c.anal.qry.Nodes[i].AnalyzeInfo.ActualInputRows = atomic.LoadInt64(&anal.ActualInputRows)
+		c.anal.qry.Nodes[i].AnalyzeInfo.ActualOutputRows = atomic.LoadInt64(&anal.ActualOutputRows)
+		c.anal.qry.Nodes[i].AnalyzeInfo.ActualInputSize = atomic.LoadInt64(&anal.ActualInputSize)
+		c.anal.qry.Nodes[i].AnalyzeInfo.ActualOutputSize = atomic.LoadInt64(&anal.ActualOutputSize)
 	}
+	c.AnalyzeInfoSummary()
 }
 
 func (c *Compile) generateNodes(n *plan.Node) (engine.Nodes, error) {
@@ -1302,6 +1318,28 @@ func (c *Compile) generateNodes(n *plan.Node) (engine.Nodes, error) {
 
 func (anal *anaylze) Nodes() []*process.AnalyzeInfo {
 	return anal.analInfos
+}
+
+func (c *Compile) AnalyzeInfoSummary() {
+	c.summary = process.NewAnalyzeInfo(-1)
+	for _, a := range c.anal.analInfos {
+		atomic.AddInt64(&c.summary.TimeConsumed, a.TimeConsumed)
+		atomic.AddInt64(&c.summary.InputRows, a.InputRows)
+		atomic.AddInt64(&c.summary.OutputRows, a.OutputRows)
+		atomic.AddInt64(&c.summary.ActualInputRows, a.ActualInputRows)
+		atomic.AddInt64(&c.summary.ActualOutputRows, a.ActualOutputRows)
+		atomic.AddInt64(&c.summary.InputSize, a.InputSize)
+		atomic.AddInt64(&c.summary.OutputSize, a.OutputSize)
+		atomic.AddInt64(&c.summary.ActualInputSize, a.ActualInputSize)
+		atomic.AddInt64(&c.summary.ActualOutputSize, a.ActualOutputSize)
+		atomic.AddInt64(&c.summary.MemorySize, a.MemorySize)
+	}
+	println("[show AnalyzeInfoSummary]:")
+	println(fmt.Sprintf("TimeConsumed: %d, MemorySize: %d", c.summary.TimeConsumed, c.summary.MemorySize))
+	println(fmt.Sprintf("InputRows: %d, OutputRows: %d", c.summary.InputRows, c.summary.OutputRows))
+	println(fmt.Sprintf("InputSize: %d, OutputSize: %d", c.summary.InputSize, c.summary.OutputSize))
+	println(fmt.Sprintf("ActualInputRows: %d, ActualOutputRows: %d", c.summary.ActualInputRows, c.summary.ActualOutputRows))
+	println(fmt.Sprintf("ActualInputSize: %d, ActualOutputSize: %d", c.summary.ActualInputSize, c.summary.ActualOutputSize))
 }
 
 func validScopeCount(ss []*Scope) int {

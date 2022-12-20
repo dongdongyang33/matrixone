@@ -441,6 +441,10 @@ func (a AnalyzeInfoDescribeImpl) GetDescription(ctx context.Context, options *Ex
 		" inputSize=" + strconv.FormatInt(a.AnalyzeInfo.InputSize, 10) + "bytes" +
 		" outputSize=" + strconv.FormatInt(a.AnalyzeInfo.OutputSize, 10) + "bytes" +
 		" memorySize=" + strconv.FormatInt(a.AnalyzeInfo.MemorySize, 10) + "bytes"
+	//" AcInputRows=" + strconv.FormatInt(a.AnalyzeInfo.ActualInputRows, 10) +
+	//" AcOutputRows=" + strconv.FormatInt(a.AnalyzeInfo.ActualOutputRows, 10) +
+	//" AcInputSize=" + strconv.FormatInt(a.AnalyzeInfo.ActualInputSize, 10) + "bytes" +
+	//" AcOutputSize=" + strconv.FormatInt(a.AnalyzeInfo.ActualOutputSize, 10) + "bytes"
 	return result, nil
 }
 

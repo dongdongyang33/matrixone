@@ -196,7 +196,7 @@ func (s *Scope) PushdownRun(c *Compile) error {
 		bat := <-reg.Ch
 		if bat == nil {
 			s.Proc.Reg.InputBatch = bat
-			_, err = vm.Run(s.Instructions, s.Proc)
+			_, err = vm.Run(s.Instructions, s.Proc, false)
 			s.Proc.Cancel()
 			return err
 		}
@@ -204,7 +204,7 @@ func (s *Scope) PushdownRun(c *Compile) error {
 			continue
 		}
 		s.Proc.Reg.InputBatch = bat
-		if end, err = vm.Run(s.Instructions, s.Proc); err != nil || end {
+		if end, err = vm.Run(s.Instructions, s.Proc, false); err != nil || end {
 			return err
 		}
 	}
@@ -310,14 +310,16 @@ func newParallelScope(c *Compile, s *Scope, ss []*Scope) *Scope {
 			arg := in.Arg.(*group.Argument)
 			s.Instructions = append(s.Instructions[:1], s.Instructions[i+1:]...)
 			s.Instructions[0] = vm.Instruction{
-				Op: vm.MergeGroup,
+				Op:  vm.MergeGroup,
+				Idx: in.Idx,
 				Arg: &mergegroup.Argument{
 					NeedEval: false,
 				},
 			}
 			for i := range ss {
 				ss[i].Instructions = append(ss[i].Instructions, vm.Instruction{
-					Op: vm.Group,
+					Op:  vm.Group,
+					Idx: in.Idx,
 					Arg: &group.Argument{
 						Aggs:  arg.Aggs,
 						Exprs: arg.Exprs,
@@ -330,14 +332,16 @@ func newParallelScope(c *Compile, s *Scope, ss []*Scope) *Scope {
 			arg := in.Arg.(*offset.Argument)
 			s.Instructions = append(s.Instructions[:1], s.Instructions[i+1:]...)
 			s.Instructions[0] = vm.Instruction{
-				Op: vm.MergeOffset,
+				Op:  vm.MergeOffset,
+				Idx: in.Idx,
 				Arg: &mergeoffset.Argument{
 					Offset: arg.Offset,
 				},
 			}
 			for i := range ss {
 				ss[i].Instructions = append(ss[i].Instructions, vm.Instruction{
-					Op: vm.Offset,
+					Op:  vm.Offset,
+					Idx: in.Idx,
 					Arg: &offset.Argument{
 						Offset: arg.Offset,
 					},
@@ -349,7 +353,7 @@ func newParallelScope(c *Compile, s *Scope, ss []*Scope) *Scope {
 			}
 		}
 	}
-	if !flg {
+	if !flg { // no flag means all instruction change parallel into ss, so need [merge, last]
 		for i := range ss {
 			ss[i].Instructions = ss[i].Instructions[:len(ss[i].Instructions)-1]
 		}

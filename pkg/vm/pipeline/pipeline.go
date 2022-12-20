@@ -66,10 +66,11 @@ func (p *Pipeline) Run(r engine.Reader, proc *process.Process) (end bool, err er
 			return false, err
 		}
 		if bat != nil {
+			// record the batch size to analyze
 			bat.Cnt = 1
 		}
 		proc.SetInputBatch(bat)
-		end, err = vm.Run(p.instructions, proc)
+		end, err = vm.Run(p.instructions, proc, true)
 		if err != nil {
 			p.cleanup(proc, true)
 			return end, err
@@ -100,7 +101,7 @@ func (p *Pipeline) ConstRun(bat *batch.Batch, proc *process.Process) (end bool, 
 	for {
 		for i := range pipelineInputBatches {
 			proc.SetInputBatch(pipelineInputBatches[i])
-			end, err = vm.Run(p.instructions, proc)
+			end, err = vm.Run(p.instructions, proc, false)
 			if err != nil {
 				p.cleanup(proc, true)
 				return end, err
@@ -128,7 +129,7 @@ func (p *Pipeline) MergeRun(proc *process.Process) (end bool, err error) {
 		return false, err
 	}
 	for {
-		end, err = vm.Run(p.instructions, proc)
+		end, err = vm.Run(p.instructions, proc, false)
 		if err != nil {
 			proc.Cancel()
 			p.cleanup(proc, true)

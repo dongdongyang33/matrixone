@@ -16,6 +16,7 @@ package process
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -144,9 +145,26 @@ func (proc *Process) InputBatch() *batch.Batch {
 
 func (proc *Process) GetAnalyze(idx int) Analyze {
 	if idx >= len(proc.AnalInfos) {
+		println(fmt.Sprintf("analyze info %d is not exist.", idx))
 		return &analyze{analInfo: nil}
 	}
-	return &analyze{analInfo: proc.AnalInfos[idx]}
+	ret := &analyze{analInfo: proc.AnalInfos[idx]}
+	fmt.Printf("[%d] analyze start time: %s\n", idx, ret.start.String())
+	ret.analInfo.formID = int32(idx)
+	ret.analInfo.Op = "unknow"
+	return ret
+}
+
+func (proc *Process) GetAnalyzeWithOp(idx int, op string) Analyze {
+	if idx >= len(proc.AnalInfos) {
+		println(fmt.Sprintf("analyze info %d is not exist (for op %s).", idx, op))
+		return &analyze{analInfo: nil}
+	}
+	ret := &analyze{analInfo: proc.AnalInfos[idx]}
+	fmt.Printf("[%d] op %s: analyze start time: %s\n", idx, op, ret.start.String())
+	ret.analInfo.formID = int32(idx)
+	ret.analInfo.Op = op
+	return ret
 }
 
 func (proc *Process) AllocVector(typ types.Type, size int64) (*vector.Vector, error) {

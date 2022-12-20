@@ -52,7 +52,7 @@ func Prepare(_ *process.Process, arg any) error {
 }
 
 func Call(idx int, proc *process.Process, arg any) (bool, error) {
-	anal := proc.GetAnalyze(idx)
+	anal := proc.GetAnalyzeWithOp(idx, "merge_top")
 	anal.Start()
 	defer anal.Stop()
 	ap := arg.(*Argument)

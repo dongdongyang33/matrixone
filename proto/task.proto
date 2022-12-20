@@ -18,7 +18,7 @@
  package task; 
  option go_package = "github.com/matrixorigin/matrixone/pkg/pb/task";
  
- import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+ import "protobuf/gogoproto/gogo.proto";
  
  option (gogoproto.goproto_enum_prefix_all) = true;
  

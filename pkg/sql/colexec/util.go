@@ -1,4 +1,4 @@
-// Copyright 2021 Matrix Origin
+// Copyright 2022 Matrix Origin
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,32 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package output
+package colexec
 
 import (
-	"bytes"
+	"reflect"
+	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
 
-func String(arg any, buf *bytes.Buffer) {
-	buf.WriteString("sql output")
-}
-
-func Prepare(_ *process.Process, _ any) error {
-	return nil
-}
-
-func Call(idx int, proc *process.Process, arg any) (bool, error) {
-	analyze := proc.GetAnalyzeWithOp(idx, "output")
-	if bat := proc.Reg.InputBatch; bat != nil && len(bat.Zs) > 0 {
-		analyze.ActualOutput(bat)
-		ap := arg.(*Argument)
-		if err := ap.Func(ap.Data, bat); err != nil {
-			bat.Clean(proc.Mp())
-			return true, err
-		}
-		bat.Clean(proc.Mp())
+func WaitingValue(receiverListener []reflect.SelectCase, a process.Analyze) (int, reflect.Value, bool) {
+	start := time.Now()
+	chosen, value, ok := reflect.Select(receiverListener)
+	if ok {
+		a.AddWaitingTime(start)
 	}
-	return false, nil
+	return chosen, value, ok
 }

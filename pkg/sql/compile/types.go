@@ -170,4 +170,6 @@ type Compile struct {
 	cnList engine.Nodes
 	// ast
 	stmt tree.Statement
+
+	summary *process.AnalyzeInfo
 }

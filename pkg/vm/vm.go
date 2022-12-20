@@ -16,6 +16,8 @@ package vm
 
 import (
 	"bytes"
+	"fmt"
+
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
@@ -48,7 +50,7 @@ func Prepare(ins Instructions, proc *process.Process) error {
 	return nil
 }
 
-func Run(ins Instructions, proc *process.Process) (end bool, err error) {
+func Run(ins Instructions, proc *process.Process, isRead bool) (end bool, err error) {
 	var ok bool
 
 	defer func() {
@@ -56,9 +58,15 @@ func Run(ins Instructions, proc *process.Process) (end bool, err error) {
 			err = moerr.ConvertPanicError(proc.Ctx, e)
 		}
 	}()
+	if isRead { // record actual data that read from engine
+		analyze := proc.GetAnalyze(ins[0].Idx)
+		analyze.ActualInput(proc.InputBatch())
+	}
 	for _, in := range ins {
 		if ok, err = execFunc[in.Op](in.Idx, proc, in.Arg); err != nil {
 			return ok || end, err
+		} else {
+			println(fmt.Sprintf("run insetruction. op = %d, idx = %d", in.Op, in.Idx))
 		}
 		if ok { // ok is true shows that at least one operator has done its work
 			end = true

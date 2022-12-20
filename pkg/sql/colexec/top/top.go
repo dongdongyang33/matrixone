@@ -54,7 +54,7 @@ func Prepare(_ *process.Process, arg any) error {
 func Call(idx int, proc *process.Process, arg any) (bool, error) {
 	ap := arg.(*Argument)
 	ctr := ap.ctr
-	anal := proc.GetAnalyze(idx)
+	anal := proc.GetAnalyzeWithOp(idx, "Top")
 	anal.Start()
 	defer anal.Stop()
 	for {

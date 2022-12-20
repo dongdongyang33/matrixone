@@ -16,10 +16,12 @@ package merge
 
 import (
 	"bytes"
+	"reflect"
+
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
+	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
-	"reflect"
 )
 
 func String(_ any, buf *bytes.Buffer) {
@@ -53,7 +55,7 @@ func Call(idx int, proc *process.Process, arg any) (bool, error) {
 			return true, nil
 		}
 
-		chosen, value, ok := reflect.Select(ctr.receiverListener)
+		chosen, value, ok := colexec.WaitingValue(ctr.receiverListener, anal)
 		if !ok {
 			return false, moerr.NewInternalError(proc.Ctx, "pipeline closed unexpectedly")
 		}

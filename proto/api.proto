@@ -17,9 +17,9 @@
 syntax = "proto3";
 package api;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "timestamp.proto";
-import "plan.proto";
+import "protobuf/gogoproto/gogo.proto";
+import "proto/timestamp.proto";
+import "proto/plan.proto";
 
 
 option go_package = "github.com/matrixorigin/matrixone/pkg/pb/api";

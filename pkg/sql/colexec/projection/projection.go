@@ -39,7 +39,7 @@ func Prepare(_ *process.Process, _ any) error {
 }
 
 func Call(idx int, proc *process.Process, arg any) (bool, error) {
-	anal := proc.GetAnalyze(idx)
+	anal := proc.GetAnalyzeWithOp(idx, "projection")
 	anal.Start()
 	defer anal.Stop()
 

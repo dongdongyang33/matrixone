@@ -18,8 +18,8 @@ syntax = "proto3";
 package logservice;
 option go_package = "github.com/matrixorigin/matrixone/pkg/pb/logservice";
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "metadata.proto";
+import "protobuf/gogoproto/gogo.proto";
+import "proto/metadata.proto";
 
 option (gogoproto.goproto_enum_prefix_all) = false;
 
