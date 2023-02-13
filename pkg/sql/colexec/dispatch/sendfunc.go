@@ -16,6 +16,8 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
+	"hash/crc32"
 	"sync/atomic"
 	"time"
 
@@ -74,6 +76,7 @@ func sendToAllFunc(bat *batch.Batch, ap *Argument, proc *process.Process) error 
 				uuid:  csinfo.Uid,
 			}
 			// TODO: add check the receive info's correctness
+
 			if err := sendBatchToClientSession(encodeData, newWrapClientSession); err != nil {
 				return err
 			}
@@ -132,6 +135,7 @@ func sendToAnyLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) e
 }
 
 func sendBatchToClientSession(encodeBatData []byte, wcs *WrapperClientSession) error {
+	checksum := crc32.ChecksumIEEE(encodeBatData)
 	if len(encodeBatData) <= maxMessageSizeToMoRpc {
 		msg := cnclient.AcquireMessage()
 		{
@@ -139,6 +143,7 @@ func sendBatchToClientSession(encodeBatData []byte, wcs *WrapperClientSession) e
 			msg.Data = encodeBatData
 			msg.Cmd = pipeline.BatchMessage
 			msg.Sid = pipeline.BatchEnd
+			msg.Checksum = checksum
 		}
 		if err := wcs.cs.Write(wcs.ctx, msg); err != nil {
 			return err
@@ -146,6 +151,7 @@ func sendBatchToClientSession(encodeBatData []byte, wcs *WrapperClientSession) e
 		return nil
 	}
 
+	fmt.Printf("[dispatchdispatch] msg too big, seperate to chunks.\n")
 	start := 0
 	for start < len(encodeBatData) {
 		end := start + maxMessageSizeToMoRpc
@@ -160,6 +166,7 @@ func sendBatchToClientSession(encodeBatData []byte, wcs *WrapperClientSession) e
 			msg.Data = encodeBatData[start:end]
 			msg.Cmd = pipeline.BatchMessage
 			msg.Sid = uint64(sid)
+			msg.Checksum = checksum
 		}
 
 		if err := wcs.cs.Write(wcs.ctx, msg); err != nil {

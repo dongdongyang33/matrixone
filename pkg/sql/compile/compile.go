@@ -130,6 +130,7 @@ func (c *Compile) Run(_ uint64) (err error) {
 
 	// XXX PrintScope has a none-trivial amount of logging
 	// PrintScope(nil, []*Scope{c.scope})
+	fmt.Printf("[scopescope] %s\n", DebugShowScopes([]*Scope{c.scope}))
 	switch c.scope.Magic {
 	case Normal:
 		defer c.fillAnalyzeInfo()
@@ -1691,7 +1692,8 @@ func updateScopesLastFlag(updateScopes []*Scope) {
 }
 
 func isCurrentCN(addr string, currentCNAddr string) bool {
-	return strings.Split(addr, ":")[0] == strings.Split(currentCNAddr, ":")[0]
+	//return strings.Split(addr, ":")[0] == strings.Split(currentCNAddr, ":")[0]
+	return addr == currentCNAddr
 }
 
 func rowsetDataToVector(ctx context.Context, proc *process.Process, exprs []*plan.Expr) (*vector.Vector, error) {

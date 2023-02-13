@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/matrixorigin/matrixone/pkg/cnservice/cnclient"
+	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/morpc"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/pb/pipeline"
@@ -55,18 +56,32 @@ type Argument struct {
 
 func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 	if arg.ctr.remoteReceivers != nil {
-		// TODO: how to handle pipelineFailed?
-		for _, r := range arg.ctr.remoteReceivers {
-			message := cnclient.AcquireMessage()
-			{
-				message.Id = r.msgId
-				message.Cmd = pipeline.BatchMessage
-				message.Sid = pipeline.MessageEnd
-				message.Uuid = r.uuid[:]
+		if pipelineFailed {
+			for _, r := range arg.ctr.remoteReceivers {
+				err := moerr.NewInternalError(r.ctx, "pipeline failed")
+				errData := pipeline.EncodedMessageError(r.ctx, err)
+				message := cnclient.AcquireMessage()
+				{
+					message.Id = r.msgId
+					message.Cmd = pipeline.BatchMessage
+					message.Sid = pipeline.MessageEnd
+					message.Err = errData
+					message.Uuid = r.uuid[:]
+				}
+				r.cs.Write(r.ctx, message)
 			}
-			r.cs.Write(r.ctx, message)
+		} else {
+			for _, r := range arg.ctr.remoteReceivers {
+				message := cnclient.AcquireMessage()
+				{
+					message.Id = r.msgId
+					message.Cmd = pipeline.BatchMessage
+					message.Sid = pipeline.MessageEnd
+					message.Uuid = r.uuid[:]
+				}
+				r.cs.Write(r.ctx, message)
+			}
 		}
-
 	}
 
 	if pipelineFailed {

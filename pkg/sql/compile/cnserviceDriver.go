@@ -262,11 +262,15 @@ func receiveMessageFromCnServer(c *Compile, mChan chan morpc.Message, nextAnalyz
 	var val morpc.Message
 	var dataBuffer []byte
 	var sequence uint64
+	var ok bool
 	for {
 		select {
 		case <-c.ctx.Done():
 			return moerr.NewRPCTimeout(c.ctx)
-		case val = <-mChan:
+		case val, ok = <-mChan:
+		}
+		if !ok {
+			return moerr.NewStreamClosed(c.ctx)
 		}
 		if val == nil {
 			return nil

@@ -15,15 +15,19 @@
 package compile
 
 import (
+	"bytes"
 	"context"
-	"strings"
+	"fmt"
+	"hash/crc32"
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/cnservice/cnclient"
+	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/morpc"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
+	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/defines"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	pbpipeline "github.com/matrixorigin/matrixone/pkg/pb/pipeline"
@@ -147,11 +151,13 @@ func (s *Scope) MergeRun(c *Compile) error {
 		select {
 		case err := <-errChan:
 			if err != nil {
+				fmt.Printf("[scopemergerun] receive error from local ch. proc = %p\n", s.Proc)
 				return err
 			}
 			slen--
 		case err := <-errReceiveChan:
 			if err != nil {
+				fmt.Printf("[scopemergerun] receive error from remote ch. proc = %p\n", s.Proc)
 				return err
 			}
 			rlen--
@@ -167,8 +173,9 @@ func (s *Scope) MergeRun(c *Compile) error {
 // if no target node information, just execute it at local.
 func (s *Scope) RemoteRun(c *Compile) error {
 	// if send to itself, just run it parallel at local.
+	// strings.Split(c.addr, ":")[0] == strings.Split(s.NodeInfo.Addr, ":")[0]
 	if len(s.NodeInfo.Addr) == 0 || !cnclient.IsCNClientReady() ||
-		len(c.addr) == 0 || strings.Split(c.addr, ":")[0] == strings.Split(s.NodeInfo.Addr, ":")[0] {
+		len(c.addr) == 0 || c.addr == s.NodeInfo.Addr {
 		return s.ParallelRun(c, s.IsRemote)
 	}
 
@@ -583,26 +590,31 @@ func fillInstructionsByCopyScope(targetScope *Scope, srcScope *Scope,
 }
 
 func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) error {
-	mp, err := mpool.NewMPool("compile", 0, mpool.NoFixed)
-	if err != nil {
-		panic(err)
-	}
-
 	for _, rr := range s.RemoteReceivRegInfos {
-		go func(info RemoteReceivRegInfo, reg *process.WaitRegister, mp *mpool.MPool) {
+		go func(info RemoteReceivRegInfo, reg *process.WaitRegister) {
+			mp, err := mpool.NewMPool("receive_from_remote", 0, mpool.NoFixed)
+			if err != nil {
+				panic(err)
+			}
+
 			c, cancel := context.WithTimeout(context.Background(), time.Second*10000)
 			_ = cancel
 
 			streamSender, errStream := cnclient.GetStreamSender(info.FromAddr)
 			if errStream != nil {
+				reg.Ch <- nil
+				close(reg.Ch)
 				errChan <- errStream
 				return
 			}
 			defer func(streamSender morpc.Stream) {
 				// TODO: should close the channel or not?
+				reg.Ch <- nil
+				close(reg.Ch)
 				_ = streamSender.Close()
 			}(streamSender)
 
+			// notify the remote cn that can receive batch now
 			message := cnclient.AcquireMessage()
 			{
 				message.Id = streamSender.ID()
@@ -614,54 +626,85 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) error {
 				return
 			}
 
+			// get the receive channel and receive message from it
 			messagesReceive, errReceive := streamSender.Receive()
 			if errReceive != nil {
 				errChan <- errReceive
 				return
 			}
 
+			fmt.Printf("[scopemergerun] begin to receive msg. to uuid %s ch %p\n", info.Uuid, reg.Ch)
 			var val morpc.Message
 			var dataBuffer []byte
+			var ok bool
 			for {
 				select {
 				case <-c.Done():
-					errChan <- nil
+					errChan <- moerr.NewRPCTimeout(c)
 					return
-				case val = <-messagesReceive:
+				case val, ok = <-messagesReceive:
+				}
+
+				if !ok {
+					errChan <- moerr.NewStreamClosed(c)
+					return
 				}
 
 				// TODO: what val = nil means?
 				if val == nil {
-					reg.Ch <- nil
-					close(reg.Ch)
 					errChan <- nil
 					return
 				}
 
 				m := val.(*pbpipeline.Message)
 
+				if m.GetErr() != nil {
+					err := pbpipeline.GetMessageErrorInfo(m)
+					errChan <- err
+					return
+				}
+
 				if m.IsEndMessage() {
-					reg.Ch <- nil
-					close(reg.Ch)
 					errChan <- nil
 					return
 				}
 
 				dataBuffer = append(dataBuffer, m.Data...)
-
-				if m.BatcWaitingNextToMerge() {
+				switch m.GetSid() {
+				case pbpipeline.BatchWaitingNext:
+					fmt.Printf("[scopemergerun] uuid %s receive an chunk msg. waiting ...\n", info.Uuid)
 					continue
+				case pbpipeline.BatchEnd:
+					if m.Checksum != crc32.ChecksumIEEE(dataBuffer) {
+						fmt.Printf("[scopemergerun] uuid %s receive checksum wrong.\n", info.Uuid)
+						errChan <- moerr.NewInternalErrorNoCtx("Packages delivered by morpc is broken")
+						return
+					}
+					bat, err := decodeBatch(mp, dataBuffer)
+					if err != nil {
+						fmt.Printf("[scopemergerun] uuid %s receive decode batch err. err: %s\n", info.Uuid, err)
+						errChan <- err
+						return
+					}
+					test, err := types.Encode(bat)
+					if err != nil {
+						fmt.Printf("[scopemergerun] uuid %s receive encode batch err. err: %s\n", info.Uuid, err)
+						errChan <- err
+						return
+					}
+					result := bytes.Compare(test, dataBuffer)
+					if result != 0 {
+						fmt.Printf("[scopemergerun] uuid %s cmp not equal.\n", info.Uuid)
+						errChan <- err
+						return
+					}
+					reg.Ch <- bat
+					dataBuffer = nil
+				default:
+					errChan <- moerr.NewInternalError(c, "merge run receive unknonw msg type from remote")
 				}
-
-				bat, err := decodeBatch(mp, dataBuffer)
-				if err != nil {
-					errChan <- err
-					return
-				}
-				reg.Ch <- bat
-				dataBuffer = nil
 			}
-		}(rr, s.Proc.Reg.MergeReceivers[rr.Idx], mp)
+		}(rr, s.Proc.Reg.MergeReceivers[rr.Idx])
 	}
 
 	return nil
