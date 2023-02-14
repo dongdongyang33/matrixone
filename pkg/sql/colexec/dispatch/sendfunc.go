@@ -70,10 +70,11 @@ func sendToAllFunc(bat *batch.Batch, ap *Argument, proc *process.Process) error 
 			_ = cancel
 
 			newWrapClientSession := &WrapperClientSession{
-				msgId: csinfo.MsgId,
-				ctx:   timeoutCtx,
-				cs:    csinfo.Cs,
-				uuid:  csinfo.Uid,
+				msgId:  csinfo.MsgId,
+				ctx:    timeoutCtx,
+				cs:     csinfo.Cs,
+				uuid:   csinfo.Uid,
+				doneCh: csinfo.DoneCh,
 			}
 			// TODO: add check the receive info's correctness
 
@@ -84,6 +85,7 @@ func sendToAllFunc(bat *batch.Batch, ap *Argument, proc *process.Process) error 
 			cnt--
 		}
 		ap.prepared = true
+		ap.bid++
 
 		return nil
 	}
@@ -107,6 +109,7 @@ func sendToAllFunc(bat *batch.Batch, ap *Argument, proc *process.Process) error 
 		case reg.Ch <- bat:
 		}
 	}
+	ap.bid++
 
 	return nil
 }

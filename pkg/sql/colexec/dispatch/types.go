@@ -16,6 +16,7 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/matrixorigin/matrixone/pkg/cnservice/cnclient"
@@ -33,6 +34,7 @@ type WrapperClientSession struct {
 	cs    morpc.ClientSession
 	uuid  uuid.UUID
 	// toAddr string
+	doneCh chan struct{}
 }
 type container struct {
 	// the clientsession info for the channel you want to dispatch
@@ -45,6 +47,8 @@ type Argument struct {
 	ctr      *container
 	prepared bool
 	sendto   int
+
+	bid int
 
 	// FuncId means the sendFunc
 	FuncId int
@@ -69,6 +73,7 @@ func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 					message.Uuid = r.uuid[:]
 				}
 				r.cs.Write(r.ctx, message)
+				close(r.doneCh)
 			}
 		} else {
 			for _, r := range arg.ctr.remoteReceivers {
@@ -80,8 +85,11 @@ func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 					message.Uuid = r.uuid[:]
 				}
 				r.cs.Write(r.ctx, message)
+				close(r.doneCh)
 			}
 		}
+		fmt.Printf("[dispatchdispatch] bid = %d, proc = %p\n", arg.bid, proc)
+		fmt.Printf("[dispatchdispatch] dispatch free with failed = %t. close remote doneCh. proc = %p\n", pipelineFailed, proc)
 	}
 
 	if pipelineFailed {

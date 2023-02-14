@@ -168,13 +168,20 @@ func cnMessageHandle(ctx context.Context, message morpc.Message, cs morpc.Client
 				break
 			}
 		}
+
+		doneCh := make(chan struct{})
 		info := process.WrapCs{
-			MsgId: m.GetId(),
-			Uid:   opUuid,
-			Cs:    cs,
+			MsgId:  m.GetId(),
+			Uid:    opUuid,
+			Cs:     cs,
+			DoneCh: doneCh,
 		}
 
 		ch <- info
+		fmt.Printf("[msghandler] uuid %s nofity begin to work, waiting ...\n", opUuid)
+		<-doneCh
+		fmt.Printf("[msghandler] uuid %s nofity work done\n", opUuid)
+
 		return msgTyp, nil, nil
 
 	case pipeline.PipelineMessage:
@@ -273,7 +280,7 @@ func receiveMessageFromCnServer(c *Compile, mChan chan morpc.Message, nextAnalyz
 			return moerr.NewStreamClosed(c.ctx)
 		}
 		if val == nil {
-			return nil
+			return moerr.NewStreamClosed(c.ctx)
 		}
 		m := val.(*pipeline.Message)
 

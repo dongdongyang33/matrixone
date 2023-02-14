@@ -15,7 +15,6 @@
 package compile
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"hash/crc32"
@@ -27,7 +26,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/morpc"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
-	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/defines"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	pbpipeline "github.com/matrixorigin/matrixone/pkg/pb/pipeline"
@@ -607,12 +605,14 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) error {
 				errChan <- errStream
 				return
 			}
-			defer func(streamSender morpc.Stream) {
+			bid := 0
+			defer func(streamSender morpc.Stream, bid int) {
+				fmt.Printf("[scopemergerun] receive done. bid = %d\n", bid)
 				// TODO: should close the channel or not?
 				reg.Ch <- nil
 				close(reg.Ch)
 				_ = streamSender.Close()
-			}(streamSender)
+			}(streamSender, bid)
 
 			// notify the remote cn that can receive batch now
 			message := cnclient.AcquireMessage()
@@ -636,23 +636,19 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) error {
 			fmt.Printf("[scopemergerun] begin to receive msg. to uuid %s ch %p\n", info.Uuid, reg.Ch)
 			var val morpc.Message
 			var dataBuffer []byte
-			var ok bool
+
 			for {
 				select {
 				case <-c.Done():
+					fmt.Printf("[scopemergerun] rpc time out\n")
 					errChan <- moerr.NewRPCTimeout(c)
 					return
-				case val, ok = <-messagesReceive:
+				case val = <-messagesReceive:
 				}
 
-				if !ok {
-					errChan <- moerr.NewStreamClosed(c)
-					return
-				}
-
-				// TODO: what val = nil means?
 				if val == nil {
-					errChan <- nil
+					fmt.Printf("[scopemergerun] stream close\n")
+					errChan <- moerr.NewStreamClosed(c)
 					return
 				}
 
@@ -686,20 +682,9 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) error {
 						errChan <- err
 						return
 					}
-					test, err := types.Encode(bat)
-					if err != nil {
-						fmt.Printf("[scopemergerun] uuid %s receive encode batch err. err: %s\n", info.Uuid, err)
-						errChan <- err
-						return
-					}
-					result := bytes.Compare(test, dataBuffer)
-					if result != 0 {
-						fmt.Printf("[scopemergerun] uuid %s cmp not equal.\n", info.Uuid)
-						errChan <- err
-						return
-					}
 					reg.Ch <- bat
 					dataBuffer = nil
+					bid++
 				default:
 					errChan <- moerr.NewInternalError(c, "merge run receive unknonw msg type from remote")
 				}

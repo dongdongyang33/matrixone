@@ -1473,7 +1473,8 @@ func (c *Compile) newRightScope(s *Scope, ss []*Scope) *Scope {
 
 // Number of cpu's available on the current machine
 func (c *Compile) NumCPU() int {
-	return runtime.NumCPU()
+	//return runtime.NumCPU()
+	return 1
 }
 
 func (c *Compile) generateCPUNumber(cpunum, blocks int) int {
