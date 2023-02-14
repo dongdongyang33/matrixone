@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"hash/crc32"
+	"os"
 	"runtime"
 	"time"
 
@@ -1455,6 +1456,12 @@ func decodeBatch(mp *mpool.MPool, data []byte) (*batch.Batch, error) {
 	//mp := proc.Mp()
 	err := types.Decode(data, bat)
 
+	for i, vec := range bat.Vecs {
+		if vec.Length() != bat.Length() {
+			fmt.Printf("++++++error vector length: %v\n", i)
+			os.Exit(0)
+		}
+	}
 	// allocated memory of vec from mPool.
 	for i := range bat.Vecs {
 		bat.Vecs[i], err = vector.Dup(bat.Vecs[i], mp)
@@ -1465,6 +1472,7 @@ func decodeBatch(mp *mpool.MPool, data []byte) (*batch.Batch, error) {
 			return nil, err
 		}
 	}
+
 	// allocated memory of aggVec from mPool.
 	for i, ag := range bat.Aggs {
 		err = ag.WildAggReAlloc(mp)
@@ -1476,6 +1484,13 @@ func decodeBatch(mp *mpool.MPool, data []byte) (*batch.Batch, error) {
 				bat.Vecs[j].Free(mp)
 			}
 			return nil, err
+		}
+	}
+	bat.Cnt = 1
+	for i, vec := range bat.Vecs {
+		if vec.Length() != bat.Length() {
+			fmt.Printf("++++++error vector length: %v\n", i)
+			os.Exit(0)
 		}
 	}
 	return bat, err

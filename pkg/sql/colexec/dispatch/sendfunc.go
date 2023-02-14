@@ -78,7 +78,7 @@ func sendToAllFunc(bat *batch.Batch, ap *Argument, proc *process.Process) error 
 			}
 			// TODO: add check the receive info's correctness
 
-			if err := sendBatchToClientSession(encodeData, newWrapClientSession); err != nil {
+			if err := sendBatchToClientSession(encodeData, newWrapClientSession, ap.bid); err != nil {
 				return err
 			}
 			ap.ctr.remoteReceivers = append(ap.ctr.remoteReceivers, newWrapClientSession)
@@ -96,7 +96,7 @@ func sendToAllFunc(bat *batch.Batch, ap *Argument, proc *process.Process) error 
 			return errEncode
 		}
 		for _, r := range ap.ctr.remoteReceivers {
-			if err := sendBatchToClientSession(encodeData, r); err != nil {
+			if err := sendBatchToClientSession(encodeData, r, ap.bid); err != nil {
 				return err
 			}
 		}
@@ -137,9 +137,11 @@ func sendToAnyLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) e
 	return nil
 }
 
-func sendBatchToClientSession(encodeBatData []byte, wcs *WrapperClientSession) error {
+func sendBatchToClientSession(encodeBatData []byte, wcs *WrapperClientSession, bid int) error {
 	checksum := crc32.ChecksumIEEE(encodeBatData)
 	if len(encodeBatData) <= maxMessageSizeToMoRpc {
+		timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		_ = cancel
 		msg := cnclient.AcquireMessage()
 		{
 			msg.Id = wcs.msgId
@@ -147,8 +149,10 @@ func sendBatchToClientSession(encodeBatData []byte, wcs *WrapperClientSession) e
 			msg.Cmd = pipeline.BatchMessage
 			msg.Sid = pipeline.BatchEnd
 			msg.Checksum = checksum
+			msg.Sequence = uint64(bid)
 		}
-		if err := wcs.cs.Write(wcs.ctx, msg); err != nil {
+		if err := wcs.cs.Write(timeoutCtx, msg); err != nil {
+			fmt.Printf("[dispatchdispatch] wcs.cs.Write error %s.\n", err)
 			return err
 		}
 		return nil
@@ -157,6 +161,8 @@ func sendBatchToClientSession(encodeBatData []byte, wcs *WrapperClientSession) e
 	fmt.Printf("[dispatchdispatch] msg too big, seperate to chunks.\n")
 	start := 0
 	for start < len(encodeBatData) {
+		timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		_ = cancel
 		end := start + maxMessageSizeToMoRpc
 		sid := pipeline.BatchWaitingNext
 		if end > len(encodeBatData) {
@@ -170,9 +176,11 @@ func sendBatchToClientSession(encodeBatData []byte, wcs *WrapperClientSession) e
 			msg.Cmd = pipeline.BatchMessage
 			msg.Sid = uint64(sid)
 			msg.Checksum = checksum
+			msg.Sequence = uint64(bid)
 		}
 
-		if err := wcs.cs.Write(wcs.ctx, msg); err != nil {
+		if err := wcs.cs.Write(timeoutCtx, msg); err != nil {
+			fmt.Printf("[dispatchdispatch] wcs.cs.Write error %s.\n", err)
 			return err
 		}
 		start = end

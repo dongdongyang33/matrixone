@@ -71,6 +71,7 @@ func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 					message.Sid = pipeline.MessageEnd
 					message.Err = errData
 					message.Uuid = r.uuid[:]
+					message.Sequence = 99999
 				}
 				r.cs.Write(r.ctx, message)
 				close(r.doneCh)
@@ -83,6 +84,7 @@ func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 					message.Cmd = pipeline.BatchMessage
 					message.Sid = pipeline.MessageEnd
 					message.Uuid = r.uuid[:]
+					message.Sequence = 99999
 				}
 				r.cs.Write(r.ctx, message)
 				close(r.doneCh)

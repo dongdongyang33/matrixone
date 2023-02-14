@@ -606,13 +606,13 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) error {
 				return
 			}
 			bid := 0
-			defer func(streamSender morpc.Stream, bid int) {
+			defer func(streamSender morpc.Stream) {
 				fmt.Printf("[scopemergerun] receive done. bid = %d\n", bid)
 				// TODO: should close the channel or not?
 				reg.Ch <- nil
 				close(reg.Ch)
 				_ = streamSender.Close()
-			}(streamSender, bid)
+			}(streamSender)
 
 			// notify the remote cn that can receive batch now
 			message := cnclient.AcquireMessage()
@@ -653,14 +653,17 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) error {
 				}
 
 				m := val.(*pbpipeline.Message)
+				fmt.Printf("[scopemergerun] receive uuid %s, squence = %d\n", info.Uuid, m.GetSequence())
 
 				if m.GetErr() != nil {
+					fmt.Printf("[scopemergerun] get message with error\n")
 					err := pbpipeline.GetMessageErrorInfo(m)
 					errChan <- err
 					return
 				}
 
 				if m.IsEndMessage() {
+					fmt.Printf("[scopemergerun] end message\n")
 					errChan <- nil
 					return
 				}
@@ -686,6 +689,7 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) error {
 					dataBuffer = nil
 					bid++
 				default:
+					fmt.Printf("[scopemergerun] merge run receive unknonw msg type from remote\n")
 					errChan <- moerr.NewInternalError(c, "merge run receive unknonw msg type from remote")
 				}
 			}
