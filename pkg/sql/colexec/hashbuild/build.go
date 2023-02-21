@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/hashmap"
+	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/index"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
@@ -40,14 +41,15 @@ func Prepare(proc *process.Process, arg any) error {
 		if ap.ctr.mp, err = hashmap.NewStrMap(false, ap.Ibucket, ap.Nbucket, proc.Mp()); err != nil {
 			return err
 		}
-		ap.ctr.vecs = make([]*vector.Vector, len(ap.Conditions))
-		ap.ctr.evecs = make([]evalVector, len(ap.Conditions))
+		//ap.ctr.vecs = make([]*vector.Vector, len(ap.Conditions))
+		//ap.ctr.evecs = make([]evalVector, len(ap.Conditions))
 	}
-	ap.ctr.bat = batch.NewWithSize(len(ap.Typs))
-	ap.ctr.bat.Zs = proc.Mp().GetSels()
-	for i, typ := range ap.Typs {
-		ap.ctr.bat.Vecs[i] = vector.New(typ)
-	}
+	ap.ctr.appendBat = batch.NewWithSize(len(ap.Typs))
+	//ap.ctr.bat = batch.NewWithSize(len(ap.Typs))
+	//ap.ctr.bat.Zs = proc.Mp().GetSels()
+	//for i, typ := range ap.Typs {
+	//ap.ctr.bat.Vecs[i] = vector.New(typ)
+	//}
 
 	return nil
 }
@@ -87,6 +89,83 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, _ bool) (bool, 
 	}
 }
 
+func (ctr *container) build2(ap *Argument, proc *process.Process, anal process.Analyze, isFirst bool) error {
+	var err error
+
+	for {
+		start := time.Now()
+		bat := <-proc.Reg.MergeReceivers[0].Ch
+		anal.WaitStop(start)
+
+		if bat == nil {
+			if ctr.appendBat != nil {
+				ctr.bats = append(ctr.bats, ctr.appendBat)
+			}
+			break
+		}
+		if bat.Length() == 0 {
+			continue
+		}
+		anal.Input(bat, isFirst)
+		anal.Alloc(int64(bat.Size()))
+
+		if ctr.appendBat.Size()+bat.Size() > mpool.GB {
+			if err = ctr.evalJoinCondition2(ctr.appendBat, ap, proc, anal); err != nil {
+				return err
+			}
+			proc.SetInputBatch(ctr.appendBat)
+			ctr.bats = append(ctr.bats, ctr.appendBat) // add reference num? or copy it in local?
+
+			ctr.appendBat = batch.NewWithSize(len(ap.Typs))
+			if ctr.appendBat, err = ctr.appendBat.Append(proc.Ctx, proc.Mp(), bat); err != nil {
+				return err
+			}
+			bat.Clean(proc.Mp())
+			return nil
+		}
+
+		if ctr.appendBat, err = ctr.appendBat.Append(proc.Ctx, proc.Mp(), bat); err != nil {
+			return err
+		}
+		bat.Clean(proc.Mp())
+	}
+
+	if ap.NeedHashMap {
+		itr := ctr.mp.NewIterator()
+		offset := 0
+		for i, bat := range ctr.bats {
+			count := bat.Length()
+			for j := 0; j < count; j += hashmap.UnitLimit {
+				n := count - j
+				if n > hashmap.UnitLimit {
+					n = hashmap.UnitLimit
+				}
+				rows := ctr.mp.GroupCount()
+				vals, zvals, err := itr.Insert(j, n, ctr.vecs[i])
+				if err != nil {
+					return err
+				}
+				for k, v := range vals[:n] {
+					if zvals[k] == 0 {
+						ctr.hasNull = true
+						continue
+					}
+					if v == 0 {
+						continue
+					}
+					if v > rows {
+						ctr.sels = append(ctr.sels, make([]int32, 0))
+					}
+					ai := int64(v) - 1
+					ctr.sels[ai] = append(ctr.sels[ai], int32(i+k))
+				}
+			}
+
+		}
+	}
+
+	return nil
+}
 func (ctr *container) build(ap *Argument, proc *process.Process, anal process.Analyze, isFirst bool) error {
 	var err error
 
@@ -103,6 +182,7 @@ func (ctr *container) build(ap *Argument, proc *process.Process, anal process.An
 		}
 		anal.Input(bat, isFirst)
 		anal.Alloc(int64(bat.Size()))
+
 		if ctr.bat, err = ctr.bat.Append(proc.Ctx, proc.Mp(), bat); err != nil {
 			return err
 		}
@@ -166,6 +246,36 @@ func (ctr *container) indexBuild() error {
 			ctr.sels[bucket] = make([]int32, 0, 64)
 		}
 		ctr.sels[bucket] = append(ctr.sels[bucket], int32(k))
+	}
+	return nil
+}
+
+func (ctr *container) evalJoinCondition2(bat *batch.Batch, ap *Argument, proc *process.Process, analyze process.Analyze) error {
+	// bat = ctr.bats[idx]
+	//ap.ctr.vecs = make([]*vector.Vector, len(ap.Conditions))
+	//ap.ctr.evecs = make([]evalVector, len(ap.Conditions))
+	vecs := make([]*vector.Vector, len(ap.Conditions))
+	evecs := make([]evalVector, len(ap.Conditions))
+	for i, cond := range ap.Conditions {
+		vec, err := colexec.EvalExpr(bat, proc, cond)
+		if err != nil || vec.ConstExpand(false, proc.Mp()) == nil {
+			ctr.cleanEvalVectors(proc.Mp())
+			return err
+		}
+		vecs[i] = vec
+		evecs[i].vec = vec
+		evecs[i].needFree = true
+		for j := range bat.Vecs {
+			if bat.Vecs[j] == vec {
+				evecs[i].needFree = false
+				break
+			}
+		}
+		ctr.vecs = append(ctr.vecs, vecs)
+		ctr.evecs = append(ctr.evecs, evecs)
+		if evecs[i].needFree && vec != nil {
+			analyze.Alloc(int64(vec.Size()))
+		}
 	}
 	return nil
 }

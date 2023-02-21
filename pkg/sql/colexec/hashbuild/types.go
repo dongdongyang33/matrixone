@@ -35,7 +35,7 @@ type evalVector struct {
 	vec      *vector.Vector
 }
 
-type container struct {
+type container1 struct {
 	state int
 
 	hasNull bool
@@ -50,6 +50,24 @@ type container struct {
 	mp *hashmap.StrHashMap
 
 	idx *index.LowCardinalityIndex
+}
+
+type container struct {
+	state int
+
+	hasNull bool
+
+	sels [][]int32
+
+	currentOpt int
+	appendBat  *batch.Batch
+	bats       []*batch.Batch
+	offset     []int
+
+	evecs [][]evalVector
+	vecs  [][]*vector.Vector
+
+	mp *hashmap.StrHashMap
 }
 
 type Argument struct {
