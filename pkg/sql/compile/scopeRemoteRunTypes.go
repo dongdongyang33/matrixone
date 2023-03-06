@@ -15,7 +15,9 @@
 package compile
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"hash/crc32"
 	"runtime"
 	"time"
@@ -38,7 +40,7 @@ import (
 )
 
 const (
-	maxMessageSizeToMoRpc = 64 * mpool.MB
+	maxMessageSizeToMoRpc = 256 * mpool.KB
 )
 
 // cnInformation records service information to help handle messages.
@@ -91,6 +93,7 @@ func newMessageSenderOnClient(
 func (sender *messageSenderOnClient) send(
 	scopeData, procData []byte, messageType uint64) error {
 	sdLen := len(scopeData)
+	fmt.Printf("[mymylog] sLen = %d\n", sdLen)
 	if sdLen <= maxMessageSizeToMoRpc {
 		message := cnclient.AcquireMessage()
 		message.SetID(sender.streamSender.ID())
@@ -102,8 +105,10 @@ func (sender *messageSenderOnClient) send(
 		return sender.streamSender.Send(sender.ctx, message)
 	}
 
+	fmt.Printf("[pipeline msg] seperate pipeine then send\n")
 	start := 0
 	cnt := uint64(0)
+	uu := uuid.New()
 	for start < sdLen {
 		end := start + maxMessageSizeToMoRpc
 		isLast := end > sdLen
@@ -112,6 +117,7 @@ func (sender *messageSenderOnClient) send(
 		message.SetID(sender.streamSender.ID())
 		message.SetMessageType(messageType)
 		message.SetSequence(cnt)
+		message.Uuid = uu[:]
 		if isLast {
 			message.SetData(scopeData[start:sdLen])
 			message.SetProcData(procData)
@@ -126,7 +132,9 @@ func (sender *messageSenderOnClient) send(
 			return err
 		}
 		cnt++
+		start = end
 	}
+	fmt.Printf("[pipeline msg] uuid %s seperate pipeine send done. cnt = %d\n", uu, cnt)
 	return nil
 }
 
@@ -199,7 +207,6 @@ func newMessageReceiverOnServer(
 		clientSession:   cs,
 		messageAcquirer: messageAcquirer,
 		maxMessageSize:  maxMessageSizeToMoRpc,
-		sequence:        m.GetSequence(),
 	}
 
 	switch m.GetCmd() {
@@ -222,18 +229,16 @@ func newMessageReceiverOnServer(
 			logutil.Errorf("decode process info from pipeline.Message failed, bytes are %v", m.GetProcInfoData())
 			panic("cn receive a message with wrong process bytes")
 		}
-		receiver.sequence = m.GetSequence()
-		if receiver.sequence == 0 { // status == Last && sequence == 0 means it is a complete data
-			receiver.scopeData = m.Data
-		} else {
-			completeData, err := getCompleteScopeDate(int(receiver.sequence), m, cs)
-			if err != nil {
-				logutil.Errorf("failed to get complete pipeline data. err = %s", err)
-				panic("failed to get complete pipeline data")
-			}
-			receiver.scopeData = completeData
-		}
 
+		completeData, err := getCompleteScopeDate(ctx, int(m.GetSequence()), m, cs)
+		if err != nil {
+			logutil.Errorf("failed to get complete pipeline data. err = %s", err)
+			panic("failed to get complete pipeline data")
+		}
+		receiver.scopeData = completeData
+		// TODO: remove it
+		opUuid, _ := uuid.FromBytes(m.GetUuid())
+		receiver.messageUuid = opUuid
 	default:
 		logutil.Errorf("unknown cmd %d for pipeline.Message", m.GetCmd())
 		panic("unknown message type")
@@ -242,12 +247,17 @@ func newMessageReceiverOnServer(
 	return receiver
 }
 
-func getCompleteScopeDate(msgCount int, m *pipeline.Message, cs morpc.ClientSession) ([]byte, error) {
+func getCompleteScopeDate(ctx context.Context, msgCount int, m *pipeline.Message, cs morpc.ClientSession) ([]byte, error) {
+	if msgCount == 0 { // status == Last && sequence == 0 means it is a complete data
+		return m.Data, nil
+	}
+
 	msgVec := make([]*pipeline.Message, int(msgCount))
-	cache, err := cs.GetCache(0)
+	cache, err := cs.CreateCache(ctx, 0)
 	if err != nil {
 		return nil, err
 	}
+
 	cnt := 0
 	for cnt < msgCount {
 		msg, ok, err := cache.Pop()
@@ -263,14 +273,17 @@ func getCompleteScopeDate(msgCount int, m *pipeline.Message, cs morpc.ClientSess
 			// so we don't need to check again
 			inputMsg := msg.(*pipeline.Message)
 			idx := inputMsg.GetSequence()
+			fmt.Printf("[pipeline msg] getCompleteScopeDate - current idx %d, put it into msgVec[%d]\n", idx, idx)
 			if msgVec[idx] == nil {
 				msgVec[idx] = inputMsg
 				cnt++
 			} else {
+				fmt.Printf("[pipeline msg] data compare: %d. uuid old = %s, new = %s\n", bytes.Compare(msgVec[idx].Data, inputMsg.Data), msgVec[idx].Uuid, inputMsg.Uuid)
 				return nil, moerr.NewInternalErrorNoCtx("duplicate msg in morpc message cache")
 			}
 		}
 	}
+	fmt.Printf("[pipeline msg] getCompleteScopeDate - all seperate pipeine msg receive done. in cache msgCount = %d\n", msgCount)
 
 	var dataBuffer []byte
 	for i := range msgVec {
@@ -360,6 +373,7 @@ func (receiver *messageReceiverOnServer) sendBatch(
 		}
 		m.SetData(data)
 		// XXX too bad.
+		m.SetMessageType(pipeline.BatchMessage)
 		m.SetCheckSum(checksum)
 		m.SetSequence(receiver.sequence)
 		receiver.sequence++
@@ -378,6 +392,7 @@ func (receiver *messageReceiverOnServer) sendBatch(
 		} else {
 			m.SetSid(pipeline.WaitingNext)
 		}
+		m.SetMessageType(pipeline.BatchMessage)
 		m.SetData(data[start:end])
 		m.SetCheckSum(checksum)
 		m.SetSequence(receiver.sequence)

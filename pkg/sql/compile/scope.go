@@ -16,6 +16,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"time"
 
@@ -173,6 +174,7 @@ func (s *Scope) RemoteRun(c *Compile) error {
 		return s.ParallelRun(c, s.IsRemote)
 	}
 
+	fmt.Printf("[remoterun] this is a remote run. %s\n", DebugShowScopes([]*Scope{s}))
 	err := s.remoteRun(c)
 
 	// tell connect operator that it's over

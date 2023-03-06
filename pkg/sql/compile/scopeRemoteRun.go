@@ -116,16 +116,12 @@ func handleWaitingNextMsg(ctx context.Context, message morpc.Message, cs morpc.C
 	msg, _ := message.(*pipeline.Message)
 	switch msg.GetCmd() {
 	case pipeline.PipelineMessage:
+		opUuid, _ := uuid.FromBytes(msg.GetUuid())
+		fmt.Printf("[pipeline msg] handleWaitingNextMsg - uuid %s seperate pipeine msg receive. seque = %d\n", opUuid, msg.GetSequence())
 		var cache morpc.MessageCache
 		var err error
-		if msg.GetSequence() == 0 {
-			if cache, err = cs.CreateCache(ctx, 0); err != nil {
-				return err
-			}
-		} else {
-			if cache, err = cs.GetCache(0); err != nil {
-				return err
-			}
+		if cache, err = cs.CreateCache(ctx, 0); err != nil {
+			return err
 		}
 		cache.Add(message)
 	}
@@ -180,8 +176,11 @@ func cnMessageHandle(receiver messageReceiverOnServer) error {
 		}
 		fillEngineForInsert(s, c.e)
 		s = refactorScope(c, c.ctx, s)
+		fmt.Printf("[pipeline msg] uuid %s decode and refactor scope done. %s\n", receiver.messageUuid, DebugShowScopes([]*Scope{s}))
 
 		err = s.ParallelRun(c, s.IsRemote)
+		fmt.Printf("[pipeline msg] uuid %s scope run done.\n", receiver.messageUuid)
+
 		if err != nil {
 			return err
 		}
@@ -198,7 +197,7 @@ func receiveMessageFromCnServer(c *Compile, sender messageSenderOnClient, nextAn
 	var val morpc.Message
 	var err error
 	var dataBuffer []byte
-	var sequence uint64
+	sequence := uint64(0)
 	for {
 		val, err = sender.receiveMessage()
 		if err != nil {
