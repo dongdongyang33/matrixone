@@ -266,6 +266,96 @@ func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, err
 	return ranges, nil
 }
 
+// return all unmodified blocks
+func (tbl *txnTable) BlockMetaInfos(ctx context.Context, expr *plan.Expr) ([]*catalog.BlockInfo, error) {
+	tbl.db.txn.Lock()
+	tbl.writes = tbl.writes[:0]
+	tbl.writesOffset = len(tbl.db.txn.writes)
+	for i, entry := range tbl.db.txn.writes {
+		if entry.databaseId != tbl.db.databaseId {
+			continue
+		}
+		if entry.tableId != tbl.tableId {
+			continue
+		}
+		tbl.writes = append(tbl.writes, tbl.db.txn.writes[i])
+	}
+	tbl.db.txn.Unlock()
+
+	err := tbl.updateMeta(ctx, expr)
+	if err != nil {
+		return nil, err
+	}
+
+	tbl.parts = tbl.db.txn.engine.getPartitions(tbl.db.databaseId, tbl.tableId).Snapshot()
+
+	//ranges := make([][]byte, 0, 1)
+	//ranges = append(ranges, []byte{})
+	blockInfos := make([]*catalog.BlockInfo, 0, 1)
+	tbl.skipBlocks = make(map[types.Blockid]uint8)
+	if tbl.meta == nil {
+		return nil, nil
+	}
+	tbl.meta.modifedBlocks = make([][]ModifyBlockMeta, len(tbl.meta.blocks))
+	exprMono := plan2.CheckExprIsMonotonic(tbl.db.txn.proc.Ctx, expr)
+	columnMap, columns, maxCol := plan2.GetColumnsByExpr(expr, tbl.getTableDef())
+	for _, i := range tbl.dnList {
+		blocks := tbl.meta.blocks[i]
+		blks := make([]BlockMeta, 0, len(blocks))
+		deletes := make(map[types.Blockid][]int)
+		if len(blocks) > 0 {
+			ts := tbl.db.txn.meta.SnapshotTS
+			ids := make([]types.Blockid, len(blocks))
+			for i := range blocks {
+				// if cn can see a appendable block, this block must contain all updates
+				// in cache, no need to do merge read, BlockRead will filter out
+				// invisible and deleted rows with respect to the timestamp
+				if !blocks[i].Info.EntryState {
+					if blocks[i].Info.CommitTs.ToTimestamp().Less(ts) { // hack
+						ids[i] = blocks[i].Info.BlockID
+					}
+				}
+			}
+
+			for _, blockID := range ids {
+				ts := types.TimestampToTS(ts)
+				iter := tbl.parts[i].NewRowsIter(ts, &blockID, true)
+				for iter.Next() {
+					entry := iter.Entry()
+					id, offset := entry.RowID.Decode()
+					deletes[id] = append(deletes[id], int(offset))
+				}
+				iter.Close()
+			}
+
+			for _, entry := range tbl.writes {
+				if entry.typ == DELETE {
+					vs := vector.MustFixedCol[types.Rowid](entry.bat.GetVector(0))
+					for _, v := range vs {
+						id, offset := v.Decode()
+						deletes[id] = append(deletes[id], int(offset))
+					}
+				}
+			}
+			for i := range blocks {
+				if _, ok := deletes[blocks[i].Info.BlockID]; !ok {
+					blks = append(blks, blocks[i])
+				}
+			}
+		}
+		for i := range blks {
+			tbl.skipBlocks[blks[i].Info.BlockID] = 0
+			if !exprMono || needRead(ctx, expr, blks[i], tbl.getTableDef(), columnMap, columns, maxCol, tbl.db.txn.proc) {
+				//ranges = append(ranges, blockMarshal(blk))
+				blockInfos = append(blockInfos, &blks[i].Info)
+			}
+		}
+		tbl.meta.modifedBlocks[i] = genModifedBlocks(ctx, deletes,
+			tbl.meta.blocks[i], blks, expr, tbl.getTableDef(), tbl.db.txn.proc)
+	}
+	return blockInfos, nil
+}
+
 // getTableDef only return all cols and their index.
 func (tbl *txnTable) getTableDef() *plan.TableDef {
 	if tbl.tableDef == nil {
