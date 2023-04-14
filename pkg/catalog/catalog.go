@@ -425,3 +425,17 @@ func BuildQueryResultPath(accountName, statementId string, blockIdx int) string 
 func BuildQueryResultMetaPath(accountName, statementId string) string {
 	return fmt.Sprintf(QueryResultMetaPath, accountName, statementId)
 }
+
+func NewBlockInfoBatch() *batch.Batch {
+	ret := &batch.Batch{}
+	for i := range MoTableMetaTypes {
+		vec := vector.NewVec(MoTableMetaTypes[i])
+		ret.SetVector(int32(i), vec)
+	}
+	return ret
+}
+
+func (b *BlockInfo) AppendToBatch(bat *batch.Batch) error {
+
+	return nil
+}

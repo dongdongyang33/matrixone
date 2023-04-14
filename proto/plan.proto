@@ -580,6 +580,8 @@ message Node {
 		INTERSECT_ALL = 55;
 		MINUS = 56;
 		MINUS_ALL = 57;
+
+		METADATA_SCAN = 58;
 	}
 
 	enum JoinFlag {

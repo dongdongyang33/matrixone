@@ -620,6 +620,16 @@ func (c *Compile) compilePlanScope(ctx context.Context, step int32, curNodeIdx i
 		}
 		// RelationName
 		return c.compileSort(n, c.compileProjection(n, c.compileRestrict(n, ss))), nil
+	case plan.Node_METADATA_SCAN:
+		// TODO: Decide the way how Node_METADATA_SCAN do
+		// 1. Read in current cn like value scan, same as current ranges()
+		// in generateNodes()
+		// 	pseudo-code:
+		//	bat := constructMetadataScanBatch(ctx, c.proc, n)
+		// 	ds := &Scope{ DataSource: &Source{Bat: bat}}
+		//
+		// 2. Let it become an operator and can send to correspoding cn execute
+		return nil, nil
 	case plan.Node_FILTER, plan.Node_PROJECT:
 		ss, err := c.compilePlanScope(ctx, step, n.Children[0], ns)
 		if err != nil {

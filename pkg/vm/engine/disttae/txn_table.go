@@ -356,6 +356,30 @@ func (tbl *txnTable) BlockMetaInfos(ctx context.Context, expr *plan.Expr) ([]*ca
 	return blockInfos, nil
 }
 
+func (tbl *txnTable) BlockMetaInfosBatch(ctx context.Context, expr *plan.Expr) (*batch.Batch, error) {
+	blockInfos, err := tbl.BlockMetaInfos(ctx, expr)
+	if err != nil {
+		return nil, err
+	}
+
+	//change blockinfos to batch
+	bat, err := covertBlockInfosToBatch(blockInfos)
+	if err != nil {
+		return nil, err
+	}
+	return bat, nil
+}
+
+func covertBlockInfosToBatch(blockInfos []*catalog.BlockInfo) (*batch.Batch, error) {
+	ret := catalog.NewBlockInfoBatch()
+	for i := range blockInfos {
+		if err := blockInfos[i].AppendToBatch(ret); err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
 // getTableDef only return all cols and their index.
 func (tbl *txnTable) getTableDef() *plan.TableDef {
 	if tbl.tableDef == nil {
