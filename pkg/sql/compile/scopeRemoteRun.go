@@ -163,6 +163,7 @@ func cnMessageHandle(receiver *messageReceiverOnServer) error {
 		fillEngineForInsert(s, c.e)
 		s = refactorScope(c, c.ctx, s)
 
+		fmt.Printf("[receivescope] %s\n", DebugShowScopes([]*Scope{s}))
 		err = s.ParallelRun(c, s.IsRemote)
 		if err != nil {
 			return err
@@ -184,7 +185,7 @@ func cnMessageHandle(receiver *messageReceiverOnServer) error {
 }
 
 // receiveMessageFromCnServer deal the back message from cn-server.
-func receiveMessageFromCnServer(c *Compile, sender messageSenderOnClient, nextAnalyze process.Analyze, nextOperator *connector.Argument) error {
+func receiveMessageFromCnServer2(c *Compile, sender messageSenderOnClient, nextAnalyze process.Analyze, nextOperator *connector.Argument) error {
 	var val morpc.Message
 	var err error
 	var dataBuffer []byte
@@ -237,6 +238,63 @@ func receiveMessageFromCnServer(c *Compile, sender messageSenderOnClient, nextAn
 	}
 }
 
+// receiveMessageFromCnServer deal the back message from cn-server.
+// pass the batch to forwardFunc
+func receiveMessageFromCnServer(c *Compile, sender messageSenderOnClient, nextAnalyze process.Analyze, forwardFunc func(*batch.Batch, *process.Process) (bool, error)) error {
+	var val morpc.Message
+	var err error
+	var dataBuffer []byte
+	var sequence uint64
+	for {
+		val, err = sender.receiveMessage()
+		if err != nil {
+			return err
+		}
+
+		m := val.(*pipeline.Message)
+
+		if errInfo, get := m.TryToGetMoErr(); get {
+			return errInfo
+		}
+		if m.IsEndMessage() {
+			anaData := m.GetAnalyse()
+			if len(anaData) > 0 {
+				ana := new(pipeline.AnalysisList)
+				if err = ana.Unmarshal(anaData); err != nil {
+					return err
+				}
+				mergeAnalyseInfo(c.anal, ana)
+			}
+			return nil
+		}
+		// XXX some order check just for safety ?
+		if sequence != m.Sequence {
+			return moerr.NewInternalErrorNoCtx("Batch packages passed by morpc are out of order")
+		}
+		sequence++
+
+		dataBuffer = append(dataBuffer, m.Data...)
+		if m.WaitingNextToMerge() {
+			continue
+		}
+		if m.Checksum != crc32.ChecksumIEEE(dataBuffer) {
+			return moerr.NewInternalErrorNoCtx("Packages delivered by morpc is broken")
+		}
+
+		bat, err := decodeBatch(c.proc.Mp(), dataBuffer)
+		if err != nil {
+			return err
+		}
+		nextAnalyze.Network(bat)
+		if _, forwardErr := forwardFunc(bat, c.proc); forwardErr != nil {
+			return forwardErr
+		}
+		// XXX maybe we can use dataBuffer = dataBuffer[:0] to do memory reuse.
+		// but it seems that decode batch will do some memory reflect. but not copy.
+		dataBuffer = nil
+	}
+}
+
 // remoteRun sends a scope for remote running and receive the results.
 // the back result message is always *pipeline.Message contains three cases.
 // 1. Message with error information
@@ -264,18 +322,35 @@ func (s *Scope) remoteRun(c *Compile) error {
 	if err != nil {
 		return err
 	}
-	err = sender.send(sData, pData, pipeline.PipelineMessage)
-	if err != nil {
-		sender.close()
+	defer sender.close()
+
+	if err := sender.send(sData, pData, pipeline.PipelineMessage); err != nil {
 		return err
 	}
 
-	nextInstruction := s.Instructions[len(s.Instructions)-1]
-	nextAnalyze := c.proc.GetAnalyze(nextInstruction.Idx)
-	nextArg := nextInstruction.Arg.(*connector.Argument)
-	err = receiveMessageFromCnServer(c, sender, nextAnalyze, nextArg)
-	sender.close()
-	return err
+	if err := s.forwardToLastInstruction(c, sender); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Scope) forwardToLastInstruction(c *Compile, sender messageSenderOnClient) error {
+	lastInstruction := s.Instructions[len(s.Instructions)-1]
+	nextAnalyze := c.proc.GetAnalyze(lastInstruction.Idx)
+	switch t := lastInstruction.Arg.(type) {
+	case *connector.Argument:
+		return receiveMessageFromCnServer(c, sender, nextAnalyze, t.Send)
+	case *dispatch.Argument:
+		// dispatch will set send func in Prepare, so we have to exec
+		// Prepare first. Or will get panic later
+		if err := dispatch.Prepare(c.proc, t); err != nil {
+			return err
+		}
+		return receiveMessageFromCnServer(c, sender, nextAnalyze, t.Send)
+	default:
+		return moerr.NewInternalErrorNoCtx(fmt.Sprintf("unexpected last operator in remote run: %v", lastInstruction.Op))
+	}
 }
 
 // encodeScope generate a pipeline.Pipeline from Scope, encode pipeline, and returns.
@@ -349,6 +424,7 @@ func encodeProcessInfo(proc *process.Process) ([]byte, error) {
 }
 
 func refactorScope(c *Compile, _ context.Context, s *Scope) *Scope {
+	resetIsEnd([]*Scope{s})
 	rs := c.newMergeScope([]*Scope{s})
 	rs.Instructions = append(rs.Instructions, vm.Instruction{
 		Op:  vm.Output,
@@ -356,6 +432,18 @@ func refactorScope(c *Compile, _ context.Context, s *Scope) *Scope {
 		Arg: &output.Argument{Data: nil, Func: c.fill},
 	})
 	return rs
+}
+
+func resetIsEnd(ss []*Scope) {
+	for i := range ss {
+		last := len(ss[i].Instructions) - 1
+		switch ss[i].Instructions[last].Arg.(type) {
+		case *connector.Argument, *dispatch.Argument:
+			ss[i].IsEnd = true
+		default:
+			ss[i].IsEnd = false
+		}
+	}
 }
 
 // fillPipeline convert the scope to pipeline.Pipeline structure through 2 iterations.
@@ -1443,6 +1531,10 @@ func sendToConnectOperator(arg *connector.Argument, bat *batch.Batch) {
 	case <-arg.Reg.Ctx.Done():
 	case arg.Reg.Ch <- bat:
 	}
+}
+
+func sendToDispatchOperator(arg *dispatch.Argument, bat *batch.Batch) {
+
 }
 
 func (ctx *scopeContext) getRegister(id, idx int32) *process.WaitRegister {

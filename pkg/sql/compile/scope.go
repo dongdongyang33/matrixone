@@ -16,9 +16,11 @@ package compile
 
 import (
 	"context"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/disttae"
+	"fmt"
 	"hash/crc32"
 	"time"
+
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/disttae"
 
 	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/cnservice/cnclient"
@@ -300,6 +302,7 @@ func (s *Scope) PushdownRun() error {
 }
 
 func (s *Scope) JoinRun(c *Compile) error {
+	fmt.Printf("[joinrun] %s\n", DebugShowScopes([]*Scope{s}))
 	mcpu := s.NodeInfo.Mcpu
 	if mcpu < 1 {
 		mcpu = 1

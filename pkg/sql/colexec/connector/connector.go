@@ -16,6 +16,8 @@ package connector
 
 import (
 	"bytes"
+
+	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
 
@@ -29,7 +31,6 @@ func Prepare(_ *process.Process, _ any) error {
 
 func Call(_ int, proc *process.Process, arg any, _ bool, _ bool) (bool, error) {
 	ap := arg.(*Argument)
-	reg := ap.Reg
 	bat := proc.InputBatch()
 	if bat == nil {
 		return true, nil
@@ -51,6 +52,11 @@ func Call(_ int, proc *process.Process, arg any, _ bool, _ bool) (bool, error) {
 		}
 	}
 
+	return ap.Send(bat, proc)
+}
+
+func (arg *Argument) Send(bat *batch.Batch, proc *process.Process) (bool, error) {
+	reg := arg.Reg
 	select {
 	case <-reg.Ctx.Done():
 		bat.Clean(proc.Mp())

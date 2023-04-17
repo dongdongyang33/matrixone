@@ -16,8 +16,10 @@ package dispatch
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
+	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
@@ -154,4 +156,10 @@ func (arg *Argument) waitRemoteRegsReady(proc *process.Process) {
 		cnt--
 	}
 	arg.prepared = true
+}
+
+func (arg *Argument) Send(bat *batch.Batch, proc *process.Process) (bool, error) {
+	fmt.Printf("[dispatch] arg.funcId = %d\n", arg.FuncId)
+	fmt.Printf("[dispatch] arg.sendFunc = %p\n", &arg.ctr.sendFunc)
+	return arg.ctr.sendFunc(bat, arg, proc)
 }
