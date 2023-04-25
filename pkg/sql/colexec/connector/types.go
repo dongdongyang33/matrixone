@@ -15,6 +15,8 @@
 package connector
 
 import (
+	"fmt"
+
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
 
@@ -34,9 +36,15 @@ func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 		}
 	}
 
-	select {
-	case arg.Reg.Ch <- nil:
-	case <-arg.Reg.Ctx.Done():
+	if !pipelineFailed {
+		select {
+		case arg.Reg.Ch <- nil:
+		case <-arg.Reg.Ctx.Done():
+		}
+	}
+
+	if pipelineFailed {
+		fmt.Printf("[connector.Free] close Ch %p, proc = %p\n", arg.Reg.Ch, proc)
 	}
 	close(arg.Reg.Ch)
 }

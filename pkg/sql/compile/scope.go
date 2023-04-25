@@ -16,6 +16,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"time"
 
@@ -87,15 +88,33 @@ func (s *Scope) MergeRun(c *Compile) error {
 	errChan := make(chan error, len(s.PreScopes))
 
 	for _, scope := range s.PreScopes {
+		scope.Proc.UpdateCtxFromCtx(s.Proc.Ctx) // make sure the ctx in proc is a tree
 		switch scope.Magic {
 		case Normal:
-			go func(cs *Scope) { errChan <- cs.Run(c) }(scope)
+			go func(cs *Scope) {
+				fmt.Printf("[mergerun.normal] current proc %p, parent proc %p\n", cs.Proc, s.Proc)
+				errChan <- cs.Run(c)
+			}(scope)
 		case Merge:
-			go func(cs *Scope) { errChan <- cs.MergeRun(c) }(scope)
+			go func(cs *Scope) {
+				fmt.Printf("[mergerun.merge] current proc %p, parent proc %p\n", cs.Proc, s.Proc)
+				errChan <- cs.MergeRun(c)
+			}(scope)
 		case Remote:
-			go func(cs *Scope) { errChan <- cs.RemoteRun(c) }(scope)
+			go func(cs *Scope) {
+				fmt.Printf("[mergerun.remote] current proc %p, parent proc %p\n", cs.Proc, s.Proc)
+				if err := cs.RemoteRun(c); err != nil {
+					fmt.Printf("[mergerun.remote] %s\n", DebugShowScopes([]*Scope{cs}))
+					fmt.Printf("[mergerun.remote] err = %s, proc = %p, parent proc = %p\n", err, cs.Proc, s.Proc)
+					errChan <- err
+				}
+				errChan <- nil
+			}(scope)
 		case Parallel:
-			go func(cs *Scope) { errChan <- cs.ParallelRun(c, cs.IsRemote) }(scope)
+			go func(cs *Scope) {
+				fmt.Printf("[mergerun.parallel] current proc %p, parent proc %p\n", cs.Proc, s.Proc)
+				errChan <- cs.ParallelRun(c, cs.IsRemote)
+			}(scope)
 		case Pushdown:
 			go func(cs *Scope) { errChan <- cs.PushdownRun() }(scope)
 		}
@@ -107,6 +126,7 @@ func (s *Scope) MergeRun(c *Compile) error {
 	}
 	p := pipeline.NewMerge(s.Instructions, s.Reg)
 	if _, err := p.MergeRun(s.Proc); err != nil {
+		fmt.Printf("[mergerun] %s\n", DebugShowScopes([]*Scope{s}))
 		return err
 	}
 	// check sub-goroutine's error
@@ -114,6 +134,7 @@ func (s *Scope) MergeRun(c *Compile) error {
 		// check sub-goroutine's error
 		for i := 0; i < len(s.PreScopes); i++ {
 			if err := <-errChan; err != nil {
+				fmt.Printf("[mergerun.prescope] %s\n", DebugShowScopes([]*Scope{s}))
 				return err
 			}
 		}
@@ -271,7 +292,7 @@ func (s *Scope) ParallelRun(c *Compile, remote bool) error {
 			},
 			NodeInfo: s.NodeInfo,
 		}
-		ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
+		ss[i].Proc = process.NewWithAnalyze(s.Proc, s.Proc.Ctx, 0, c.anal.Nodes())
 	}
 	newScope := newParallelScope(s, ss)
 	return newScope.MergeRun(c)
@@ -318,7 +339,7 @@ func (s *Scope) JoinRun(c *Compile) error {
 			Magic:    Merge,
 			NodeInfo: s.NodeInfo,
 		}
-		ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 2, c.anal.Nodes())
+		ss[i].Proc = process.NewWithAnalyze(s.Proc, s.Proc.Ctx, 2, c.anal.Nodes())
 		ss[i].Proc.Reg.MergeReceivers[1].Ch = make(chan *batch.Batch, 10)
 	}
 	probe_scope, build_scope := c.newJoinProbeScope(s, ss), c.newJoinBuildScope(s, ss)

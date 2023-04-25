@@ -16,6 +16,7 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"sync/atomic"
 	"time"
@@ -67,7 +68,9 @@ func sendToAllLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (
 // common sender: send to all RemoteReceiver
 func sendToAllRemoteFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (bool, error) {
 	if !ap.prepared {
-		ap.waitRemoteRegsReady(proc)
+		if !ap.waitRemoteRegsReady(proc) {
+			return false, moerr.NewInternalErrorNoCtx("[sendToAllRemoteFunc] wait remote ready failed")
+		}
 	}
 
 	{ // send to remote regs
@@ -109,6 +112,7 @@ func sendToAnyLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (
 		reg := ap.LocalRegs[sendto]
 		select {
 		case <-reg.Ctx.Done():
+			fmt.Printf("[dispatch.sendToAnyLocalFunc] ch %p ctx.done, close\n", reg.Ch)
 			for len(reg.Ch) > 0 { // free memory
 				bat := <-reg.Ch
 				if bat == nil {
@@ -135,7 +139,9 @@ func sendToAnyLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (
 // send it to next one.
 func sendToAnyRemoteFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (bool, error) {
 	if !ap.prepared {
-		ap.waitRemoteRegsReady(proc)
+		if !ap.waitRemoteRegsReady(proc) {
+			return false, moerr.NewInternalErrorNoCtx("[sendToAnyRemoteFunc] wait remote ready failed")
+		}
 	}
 
 	encodeData, errEncode := types.Encode(bat)

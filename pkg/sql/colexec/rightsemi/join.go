@@ -18,6 +18,7 @@ import (
 	"bytes"
 
 	"github.com/matrixorigin/matrixone/pkg/common/hashmap"
+	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
@@ -59,6 +60,32 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 			ctr.state = Probe
 
 		case Probe:
+			select {
+			case <-proc.Ctx.Done():
+				return false, moerr.NewInternalErrorNoCtx("[right semi] probe close!")
+			case bat := <-proc.Reg.MergeReceivers[0].Ch:
+				if bat == nil {
+					ctr.state = SendLast
+					continue
+				}
+				if bat.Length() == 0 {
+					bat.Clean(proc.Mp())
+					continue
+				}
+
+				if ctr.bat == nil || ctr.bat.Length() == 0 {
+					proc.PutBatch(bat)
+					continue
+				}
+
+				if err := ctr.probe(bat, ap, proc, analyze, isFirst, isLast); err != nil {
+					ap.Free(proc, true)
+					return false, err
+				}
+
+				continue
+
+			}
 			bat := <-proc.Reg.MergeReceivers[0].Ch
 			if bat == nil {
 				ctr.state = SendLast
@@ -108,6 +135,18 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 }
 
 func (ctr *container) build(ap *Argument, proc *process.Process, analyze process.Analyze) error {
+	select {
+	case <-proc.Ctx.Done():
+		return moerr.NewInternalErrorNoCtx("[right semi] build close!")
+	case bat := <-proc.Reg.MergeReceivers[1].Ch:
+		if bat != nil {
+			ctr.bat = bat
+			ctr.mp = bat.Ht.(*hashmap.JoinMap).Dup()
+			ctr.matched = make([]uint8, bat.Length())
+			analyze.Alloc(ctr.mp.Map().Size())
+		}
+		return nil
+	}
 	bat := <-proc.Reg.MergeReceivers[1].Ch
 	if bat != nil {
 		ctr.bat = bat

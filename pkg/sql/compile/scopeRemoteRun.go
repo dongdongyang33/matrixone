@@ -262,6 +262,7 @@ func (s *Scope) remoteRun(c *Compile) error {
 	nextInstruction := s.Instructions[len(s.Instructions)-1]
 	nextAnalyze := c.proc.GetAnalyze(nextInstruction.Idx)
 	nextArg := nextInstruction.Arg.(*connector.Argument)
+	// can check ctx.Done here, and kill the rpc
 	err = receiveMessageFromCnServer(c, sender, nextAnalyze, nextArg)
 	sender.close()
 	return err
@@ -1031,16 +1032,7 @@ func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext) (vm.In
 			Aggs:      convertToAggregates(t.Aggs),
 			MultiAggs: convertToMultiAggs(t.MultiAggs),
 		}
-	case vm.Join:
-		t := opr.GetJoin()
-		v.Arg = &join.Argument{
-			Ibucket:    t.Ibucket,
-			Nbucket:    t.Nbucket,
-			Cond:       t.Expr,
-			Typs:       convertToTypes(t.Types),
-			Result:     convertToResultPos(t.RelList, t.ColList),
-			Conditions: [][]*plan.Expr{t.LeftCond, t.RightCond},
-		}
+
 	case vm.Left:
 		t := opr.GetLeftJoin()
 		v.Arg = &left.Argument{
@@ -1058,26 +1050,6 @@ func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext) (vm.In
 			Nbucket:    t.Nbucket,
 			Result:     convertToResultPos(t.RelList, t.ColList),
 			LeftTypes:  convertToTypes(t.LeftTypes),
-			RightTypes: convertToTypes(t.RightTypes),
-			Cond:       t.Expr,
-			Conditions: [][]*plan.Expr{t.LeftCond, t.RightCond},
-		}
-	case vm.RightSemi:
-		t := opr.GetRightSemiJoin()
-		v.Arg = &rightsemi.Argument{
-			Ibucket:    t.Ibucket,
-			Nbucket:    t.Nbucket,
-			Result:     t.Result,
-			RightTypes: convertToTypes(t.RightTypes),
-			Cond:       t.Expr,
-			Conditions: [][]*plan.Expr{t.LeftCond, t.RightCond},
-		}
-	case vm.RightAnti:
-		t := opr.GetRightAntiJoin()
-		v.Arg = &rightanti.Argument{
-			Ibucket:    t.Ibucket,
-			Nbucket:    t.Nbucket,
-			Result:     t.Result,
 			RightTypes: convertToTypes(t.RightTypes),
 			Cond:       t.Expr,
 			Conditions: [][]*plan.Expr{t.LeftCond, t.RightCond},

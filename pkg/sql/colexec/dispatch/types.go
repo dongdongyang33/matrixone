@@ -64,7 +64,7 @@ type Argument struct {
 
 func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 	if arg.FuncId == SendToAllFunc {
-		if !arg.prepared {
+		if !pipelineFailed && !arg.prepared {
 			arg.waitRemoteRegsReady(proc)
 		}
 		for _, r := range arg.ctr.remoteReceivers {
@@ -99,11 +99,12 @@ func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 	}
 
 	for i := range arg.LocalRegs {
-		select {
-		case <-arg.LocalRegs[i].Ctx.Done():
-		case arg.LocalRegs[i].Ch <- nil:
+		if !pipelineFailed {
+			select {
+			case <-arg.LocalRegs[i].Ctx.Done():
+			case arg.LocalRegs[i].Ch <- nil:
+			}
 		}
 		close(arg.LocalRegs[i].Ch)
 	}
-
 }

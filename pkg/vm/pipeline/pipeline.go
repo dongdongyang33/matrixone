@@ -16,6 +16,7 @@ package pipeline
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/perfcounter"
@@ -142,6 +143,7 @@ func (p *Pipeline) MergeRun(proc *process.Process) (end bool, err error) {
 	}
 
 	if err = vm.Prepare(p.instructions, proc); err != nil {
+		fmt.Printf("[pipeline.mergerun] proc = %p call Cancel() in Prepared() with err: %s\n", proc, err)
 		proc.Cancel()
 		p.cleanup(proc, true)
 		return false, err
@@ -149,11 +151,13 @@ func (p *Pipeline) MergeRun(proc *process.Process) (end bool, err error) {
 	for {
 		end, err = vm.Run(p.instructions, proc)
 		if err != nil {
+			fmt.Printf("[pipeline.mergerun] proc = %p call Cancel() in Run() with err: %s\n", proc, err)
 			proc.Cancel()
 			p.cleanup(proc, true)
 			return end, err
 		}
 		if end {
+			fmt.Printf("[pipeline.mergerun] proc = %p call Cancel()\n", proc)
 			proc.Cancel()
 			p.cleanup(proc, false)
 			return end, nil

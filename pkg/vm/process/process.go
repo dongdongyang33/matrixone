@@ -98,6 +98,16 @@ func NewFromProc(p *Process, ctx context.Context, regNumber int) *Process {
 	return proc
 }
 
+func (p *Process) UpdateCtxFromCtx(ctx context.Context) {
+	newctx, cancel := context.WithCancel(ctx)
+	p.Ctx = newctx
+	p.Cancel = cancel
+
+	for i := range p.Reg.MergeReceivers {
+		p.Reg.MergeReceivers[i].Ctx = newctx
+	}
+}
+
 func (wreg *WaitRegister) MarshalBinary() ([]byte, error) {
 	return nil, nil
 }

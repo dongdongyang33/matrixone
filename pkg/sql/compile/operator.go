@@ -1174,6 +1174,55 @@ func constructBroadcastDispatch(idx int, ss []*Scope, currentCNAddr string) *dis
 	return arg
 }
 
+func constructBroadcastDispatch2(dispatchScope *Scope, idx int, receiveScopes []*Scope, currentCNAddr string) *dispatch.Argument {
+	arg := new(dispatch.Argument)
+	scopeLen := len(receiveScopes)
+	arg.LocalRegs = make([]*process.WaitRegister, 0, scopeLen)
+	arg.RemoteRegs = make([]colexec.ReceiveInfo, 0, scopeLen)
+
+	hasRemote := false
+	for _, s := range receiveScopes {
+		if s.IsEnd {
+			continue
+		}
+
+		if len(s.NodeInfo.Addr) == 0 || len(currentCNAddr) == 0 ||
+			isSameCN(s.NodeInfo.Addr, currentCNAddr) {
+			// Local reg.
+			// Put them into arg.LocalRegs
+			arg.LocalRegs = append(arg.LocalRegs, s.Proc.Reg.MergeReceivers[idx])
+		} else {
+			// Remote reg.
+			// Generate uuid for them and put into arg.RemoteRegs & scope. receive info
+			hasRemote = true
+			newUuid := uuid.New()
+
+			arg.RemoteRegs = append(arg.RemoteRegs, colexec.ReceiveInfo{
+				Uuid:     newUuid,
+				NodeAddr: s.NodeInfo.Addr,
+			})
+
+			s.RemoteReceivRegInfos = append(s.RemoteReceivRegInfos, RemoteReceivRegInfo{
+				Idx:      idx,
+				Uuid:     newUuid,
+				FromAddr: currentCNAddr,
+			})
+		}
+	}
+	if hasRemote {
+		arg.FuncId = dispatch.SendToAllFunc
+	} else {
+		arg.FuncId = dispatch.SendToAllLocalFunc
+	}
+
+	dispatchScope.Instructions = append(dispatchScope.Instructions, vm.Instruction{
+		Op:  vm.Dispatch,
+		Arg: arg,
+	})
+
+	return arg
+}
+
 func constructMergeGroup(needEval bool) *mergegroup.Argument {
 	return &mergegroup.Argument{
 		NeedEval: needEval,

@@ -16,6 +16,7 @@ package dispatch
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
@@ -103,17 +104,29 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 	return ap.ctr.sendFunc(bat, ap, proc)
 }
 
-func (arg *Argument) waitRemoteRegsReady(proc *process.Process) {
+func (arg *Argument) waitRemoteRegsReady(proc *process.Process) bool {
 	cnt := len(arg.RemoteRegs)
+	fmt.Printf("[disaptch.waitRemoteRegsReady] proc %p waiting ...\n", proc)
 	for cnt > 0 {
-		csinfo := <-proc.DispatchNotifyCh
-		arg.ctr.remoteReceivers = append(arg.ctr.remoteReceivers, &WrapperClientSession{
-			msgId:  csinfo.MsgId,
-			cs:     csinfo.Cs,
-			uuid:   csinfo.Uid,
-			doneCh: csinfo.DoneCh,
-		})
-		cnt--
+		select {
+		// 加超时
+		case <-proc.Ctx.Done():
+			fmt.Printf("[disaptch.waitRemoteRegsReady] something wrong happend.\n")
+			// 不能直接 return false, 要把能建立的连接都建立上？
+			// 不，需要关掉 ctx，handle 的地方要查看 ctx 的状态
+			// 但是已经建立了的链接一定要通知
+			return false
+		case csinfo := <-proc.DispatchNotifyCh:
+			arg.ctr.remoteReceivers = append(arg.ctr.remoteReceivers, &WrapperClientSession{
+				msgId:  csinfo.MsgId,
+				cs:     csinfo.Cs,
+				uuid:   csinfo.Uid,
+				doneCh: csinfo.DoneCh,
+			})
+			cnt--
+		}
 	}
+	fmt.Printf("[disaptch.waitRemoteRegsReady] proc %p done\n", proc)
 	arg.prepared = true
+	return true
 }

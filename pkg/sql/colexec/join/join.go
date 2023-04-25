@@ -16,9 +16,11 @@ package join
 
 import (
 	"bytes"
+	"fmt"
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/hashmap"
+	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
@@ -36,6 +38,7 @@ func Prepare(proc *process.Process, arg any) error {
 	ap.ctr.inBuckets = make([]uint8, hashmap.UnitLimit)
 	ap.ctr.evecs = make([]evalVector, len(ap.Conditions[0]))
 	ap.ctr.vecs = make([]*vector.Vector, len(ap.Conditions[0]))
+	fmt.Printf("[join.prepared] proc = %p, with chs = %p, %p\n", proc, proc.Reg.MergeReceivers[0].Ch, proc.Reg.MergeReceivers[1].Ch)
 	return nil
 }
 
@@ -55,7 +58,9 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 			ctr.state = Probe
 		case Probe:
 			start := time.Now()
+
 			bat := <-proc.Reg.MergeReceivers[0].Ch
+
 			anal.WaitStop(start)
 
 			if bat == nil {
@@ -76,6 +81,32 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 			}
 			return false, nil
 
+			select {
+			case <-proc.Reg.MergeReceivers[0].Ctx.Done():
+				return false, moerr.NewInternalErrorNoCtx("probe close???")
+			case bat := <-proc.Reg.MergeReceivers[0].Ch:
+
+				anal.WaitStop(start)
+
+				if bat == nil {
+					ctr.state = End
+					continue
+				}
+				if bat.Length() == 0 {
+					bat.Clean(proc.Mp())
+					continue
+				}
+				if ctr.bat == nil || ctr.bat.Length() == 0 {
+					proc.PutBatch(bat)
+					continue
+				}
+				if err := ctr.probe(bat, ap, proc, anal, isFirst, isLast); err != nil {
+					ap.Free(proc, true)
+					return false, err
+				}
+				return false, nil
+			}
+
 		default:
 			ap.Free(proc, false)
 			proc.SetInputBatch(nil)
@@ -86,7 +117,10 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 
 func (ctr *container) build(ap *Argument, proc *process.Process, anal process.Analyze) error {
 	start := time.Now()
-	bat := <-proc.Reg.MergeReceivers[1].Ch
+	bat, ok := <-proc.Reg.MergeReceivers[1].Ch
+	if !ok {
+		fmt.Printf("hashbuild channel closed!!!")
+	}
 	anal.WaitStop(start)
 	if bat != nil {
 		ctr.bat = bat
@@ -94,6 +128,19 @@ func (ctr *container) build(ap *Argument, proc *process.Process, anal process.An
 		anal.Alloc(ctr.mp.Map().Size())
 	}
 	return nil
+
+	select {
+	case <-proc.Reg.MergeReceivers[1].Ctx.Done():
+		return moerr.NewInternalErrorNoCtx("build close111???")
+	case bat := <-proc.Reg.MergeReceivers[1].Ch:
+		anal.WaitStop(start)
+		if bat != nil {
+			ctr.bat = bat
+			ctr.mp = bat.Ht.(*hashmap.JoinMap).Dup()
+			anal.Alloc(ctr.mp.Map().Size())
+		}
+		return nil
+	}
 }
 
 func (ctr *container) probe(bat *batch.Batch, ap *Argument, proc *process.Process, anal process.Analyze, isFirst bool, isLast bool) error {
