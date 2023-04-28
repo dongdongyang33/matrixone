@@ -84,8 +84,11 @@ func (s *Scope) Run(c *Compile) (err error) {
 
 // MergeRun range and run the scope's pre-scopes by go-routine, and finally run itself to do merge work.
 func (s *Scope) MergeRun(c *Compile) error {
-	s.Proc.Ctx = context.WithValue(s.Proc.Ctx, defines.EngineKey{}, c.e)
 	errChan := make(chan error, len(s.PreScopes))
+
+	for _, scope := range s.PreScopes {
+		scope.Proc.ResetContextFromParent(s.Proc.Ctx)
+	}
 
 	for _, scope := range s.PreScopes {
 		switch scope.Magic {
@@ -101,6 +104,8 @@ func (s *Scope) MergeRun(c *Compile) error {
 			go func(cs *Scope) { errChan <- cs.PushdownRun() }(scope)
 		}
 	}
+
+	s.Proc.Ctx = context.WithValue(s.Proc.Ctx, defines.EngineKey{}, c.e)
 	var errReceiveChan chan error
 	if len(s.RemoteReceivRegInfos) > 0 {
 		errReceiveChan = make(chan error, len(s.RemoteReceivRegInfos))
@@ -257,6 +262,12 @@ func (s *Scope) ParallelRun(c *Compile, remote bool) error {
 			newRds = append(newRds, m)
 		}
 		rds = newRds
+	}
+
+	if mcpu == 1 {
+		s.Magic = Normal
+		s.DataSource.R = rds[0] // rds's length is equal to mcpu so it is safe to do it
+		return s.Run(c)
 	}
 
 	ss := make([]*Scope, mcpu)
@@ -698,8 +709,11 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) {
 				errChan <- errReceive
 				return
 			}
-
-			if err := receiveMsgAndForward(c, messagesReceive, reg.Ch, mp); err != nil {
+			var ch chan *batch.Batch
+			if reg != nil {
+				ch = reg.Ch
+			}
+			if err := receiveMsgAndForward(c, messagesReceive, ch, mp, s.Proc); err != nil {
 				reg.Ch <- nil
 				errChan <- err
 				return
@@ -710,7 +724,7 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) {
 	}
 }
 
-func receiveMsgAndForward(ctx context.Context, receiveCh chan morpc.Message, forwardCh chan *batch.Batch, mp *mpool.MPool) error {
+func receiveMsgAndForward(ctx context.Context, receiveCh chan morpc.Message, forwardCh chan *batch.Batch, mp *mpool.MPool, proc *process.Process) error {
 	var val morpc.Message
 	var dataBuffer []byte
 	var ok bool
@@ -753,7 +767,13 @@ func receiveMsgAndForward(ctx context.Context, receiveCh chan morpc.Message, for
 			if err != nil {
 				return err
 			}
-			forwardCh <- bat
+			if forwardCh == nil {
+				// used for delete
+				proc.SetInputBatch(bat)
+			} else {
+				// used for BroadCastJoin
+				forwardCh <- bat
+			}
 			dataBuffer = nil
 		}
 	}

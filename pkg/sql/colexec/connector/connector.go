@@ -59,7 +59,7 @@ func (arg *Argument) Send(bat *batch.Batch, proc *process.Process) (bool, error)
 	reg := arg.Reg
 	select {
 	case <-reg.Ctx.Done():
-		bat.Clean(proc.Mp())
+		proc.PutBatch(bat)
 		return true, nil
 	case reg.Ch <- bat:
 		proc.SetInputBatch(nil)
