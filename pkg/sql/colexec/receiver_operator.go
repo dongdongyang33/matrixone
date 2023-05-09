@@ -69,7 +69,12 @@ func (r *ReceiverOperator) ReceiveFromAllRegs(analyze process.Analyze) (*batch.B
 		chosen, value, ok := reflect.Select(r.receiverListener)
 		analyze.WaitStop(start)
 		if !ok {
-			logutil.Errorf("children pipeline closed unexpectedly")
+			select {
+			case <-r.proc.Ctx.Done():
+				logutil.Infof("proc ctx done during merge receive")
+			default:
+				logutil.Errorf("children pipeline closed unexpectedly")
+			}
 			r.receiverListener = append(r.receiverListener[:chosen], r.receiverListener[chosen+1:]...)
 			r.aliveMergeReceiver--
 			return nil, true, nil

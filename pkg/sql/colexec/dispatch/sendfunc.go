@@ -25,6 +25,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/pb/pipeline"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
@@ -41,7 +42,13 @@ func sendToAllLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (
 	for _, reg := range ap.LocalRegs {
 		select {
 		case <-reg.Ctx.Done():
-			return false, moerr.NewInternalError(proc.Ctx, "pipeline context has done.")
+			select {
+			case <-proc.Ctx.Done():
+				logutil.Infof("proc ctx done during send to all local func")
+				return true, nil
+			default:
+				return false, moerr.NewInternalError(proc.Ctx, "pipeline context has done.")
+			}
 		case reg.Ch <- bat:
 		}
 	}
@@ -78,17 +85,15 @@ func sendToAllRemoteFunc(bat *batch.Batch, ap *Argument, proc *process.Process) 
 
 // send to all receiver (include LocalReceiver and RemoteReceiver)
 func sendToAllFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (bool, error) {
-	_, remoteErr := sendToAllRemoteFunc(bat, ap, proc)
-	if remoteErr != nil {
-		return false, remoteErr
+	var end bool
+	var err error
+	end, err = sendToAllRemoteFunc(bat, ap, proc)
+	if err != nil || end {
+		return end, err
 	}
 
-	_, localErr := sendToAllLocalFunc(bat, ap, proc)
-	if localErr != nil {
-		return false, localErr
-	}
-
-	return false, nil
+	end, err = sendToAllLocalFunc(bat, ap, proc)
+	return end, err
 }
 
 // common sender: send to any LocalReceiver
