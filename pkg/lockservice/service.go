@@ -65,7 +65,7 @@ func NewLockService(cfg Config) LockService {
 		s.abortDeadlockTxn)
 	s.clock = runtime.ProcessLevelRuntime().Clock()
 	s.initRemote()
-	s.events.start()
+	//s.events.start()
 	return s
 }
 
