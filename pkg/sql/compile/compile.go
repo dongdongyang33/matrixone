@@ -1781,7 +1781,7 @@ func (c *Compile) compileBucketGroup(n *plan.Node, ss []*Scope, ns []*plan.Node,
 }
 
 func (c *Compile) AddParallelDispatchScope(idx int, shuffle bool, shuffleColIdx int, sender *Scope, receivers []*Scope) {
-	if sender.NodeInfo.Mcpu == 1 {
+	if sender.NodeInfo.Mcpu == 1 { // don't need to parallel
 		sender.Instructions = append(sender.Instructions, vm.Instruction{
 			Op:  vm.Dispatch,
 			Arg: constructBroadcastDispatch(idx, receivers, sender.NodeInfo.Addr, true, shuffleColIdx),
@@ -1790,19 +1790,21 @@ func (c *Compile) AddParallelDispatchScope(idx int, shuffle bool, shuffleColIdx 
 		appended := false
 		for i := range receivers {
 			if isSameCN(sender.NodeInfo.Addr, receivers[i].NodeInfo.Addr) {
-				receivers[idx].PreScopes = append(receivers[idx].PreScopes, sender)
+				receivers[i].PreScopes = append(receivers[i].PreScopes, sender)
 				appended = true
 				break
 			}
 		}
 
 		if !appended {
+			fmt.Printf("1Coundn't find a suitable place to put prescopes during construct parallel dispatch")
 			logutil.Warnf("Coundn't find a suitable place to put prescopes during construct parallel dispatch")
-			receivers[0].PreScopes = append(receivers[idx].PreScopes, sender)
+			receivers[0].PreScopes = append(receivers[0].PreScopes, sender)
 		}
 		return
 	}
 
+	// build the parallel parts
 	concurrNum := sender.NodeInfo.Mcpu
 	concurrScopes := make([]*Scope, concurrNum)
 	for i := range concurrScopes {
@@ -1816,17 +1818,13 @@ func (c *Compile) AddParallelDispatchScope(idx int, shuffle bool, shuffleColIdx 
 		concurrScopes[i].Proc = process.NewWithAnalyze(c.proc, c.ctx, 1, c.anal.analInfos)
 
 		concurrScopes[i].Instructions = append(concurrScopes[i].Instructions, vm.Instruction{
-			Op:      vm.Merge,
-			Idx:     c.anal.curr,
-			IsFirst: c.anal.isFirst,
-			Arg:     &merge.Argument{},
+			Op:  vm.Merge,
+			Arg: &merge.Argument{},
 		})
 		dispatch := constructBroadcastDispatch(idx, receivers, concurrScopes[i].NodeInfo.Addr, shuffle, shuffleColIdx)
 		concurrScopes[i].Instructions = append(concurrScopes[i].Instructions, vm.Instruction{
-			Op:      vm.Dispatch,
-			Idx:     c.anal.curr,
-			IsFirst: c.anal.isFirst,
-			Arg:     dispatch,
+			Op:  vm.Dispatch,
+			Arg: dispatch,
 		})
 	}
 
@@ -1842,14 +1840,15 @@ func (c *Compile) AddParallelDispatchScope(idx int, shuffle bool, shuffleColIdx 
 	appended := false
 	for i := range receivers {
 		if isSameCN(receivers[i].NodeInfo.Addr, sender.NodeInfo.Addr) {
-			receivers[idx].PreScopes = append(receivers[idx].PreScopes, concurrScopes...)
+			receivers[i].PreScopes = append(receivers[i].PreScopes, concurrScopes...)
 			appended = true
 			break
 		}
 	}
 	if !appended {
+		fmt.Printf("2Coundn't find a suitable place to put prescopes during construct parallel dispatch")
 		logutil.Warnf("Coundn't find a suitable place to put prescopes during construct parallel dispatch")
-		receivers[0].PreScopes = append(receivers[idx].PreScopes, concurrScopes...)
+		receivers[0].PreScopes = append(receivers[0].PreScopes, concurrScopes...)
 	}
 
 	return
@@ -2528,7 +2527,7 @@ func isLaunchMode(cnlist engine.Nodes) bool {
 }
 
 func isSameCN(addr string, currentCNAddr string) bool {
-	return addr == currentCNAddr
+	//return addr == currentCNAddr
 	// just a defensive judgment. In fact, we shouldn't have received such data.
 	parts1 := strings.Split(addr, ":")
 	if len(parts1) != 2 {

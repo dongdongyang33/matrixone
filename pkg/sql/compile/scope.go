@@ -16,7 +16,9 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
+	"sync/atomic"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/disttae"
 
@@ -169,6 +171,7 @@ func (s *Scope) RemoteRun(c *Compile) error {
 		return s.ParallelRun(c, s.IsRemote)
 	}
 
+	//fmt.Printf("[remoterun] %s\n", DebugShowScopes([]*Scope{s}))
 	runtime.ProcessLevelRuntime().Logger().
 		Debug("remote run pipeline",
 			zap.String("local-address", c.addr),
@@ -694,12 +697,12 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) {
 		go func(info *RemoteReceivRegInfo, reg *process.WaitRegister) {
 			streamSender, errStream := cnclient.GetStreamSender(info.FromAddr)
 			if errStream != nil {
-				close(reg.Ch)
+				CloseCh(reg)
 				errChan <- errStream
 				return
 			}
 			defer func(streamSender morpc.Stream) {
-				close(reg.Ch)
+				CloseCh(reg)
 				_ = streamSender.Close(true)
 			}(streamSender)
 
@@ -787,5 +790,12 @@ func receiveMsgAndForward(proc *process.Process, receiveCh chan morpc.Message, f
 			}
 			dataBuffer = nil
 		}
+	}
+}
+
+func CloseCh(reg *process.WaitRegister) {
+	if atomic.AddInt32(&reg.ReceiveCnt, -1) <= 0 {
+		fmt.Printf("[receivefromremote] close ch %p\n", reg.Ch)
+		close(reg.Ch)
 	}
 }
