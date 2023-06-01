@@ -569,10 +569,8 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 	for i := range ss {
 		if !ss[i].IsEnd {
 			ss[i].appendInstruction(vm.Instruction{
-				Op: vm.Connector,
-				Arg: &connector.Argument{
-					Reg: s.Proc.Reg.MergeReceivers[j],
-				},
+				Op:  vm.Connector,
+				Arg: constructConnector(s.Proc.Reg.MergeReceivers[j]),
 			})
 			j++
 		}
@@ -688,8 +686,12 @@ func fillInstructionsByCopyScope(targetScope *Scope, srcScope *Scope,
 func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) {
 	for i := range s.RemoteReceivRegInfos {
 		op := &s.RemoteReceivRegInfos[i]
-		go func(info *RemoteReceivRegInfo, reg *process.WaitRegister) {
+		s.Proc.Reg.MergeReceivers[op.Idx].ReceiveCnt++
+	}
 
+	for i := range s.RemoteReceivRegInfos {
+		op := &s.RemoteReceivRegInfos[i]
+		go func(info *RemoteReceivRegInfo, reg *process.WaitRegister) {
 			streamSender, errStream := cnclient.GetStreamSender(info.FromAddr)
 			if errStream != nil {
 				close(reg.Ch)

@@ -207,6 +207,9 @@ func sendShuffledBats(ap *Argument, proc *process.Process) (bool, error) {
 		batToSend := ap.ctr.shuffledBats[batIndex]
 		if batToSend != nil && batToSend.Length() != 0 {
 			select {
+			case <-proc.Ctx.Done():
+				logutil.Infof("proc context done during dispatch to local")
+				return true, nil
 			case <-reg.Ctx.Done():
 				return false, moerr.NewInternalError(proc.Ctx, "pipeline context has done.")
 			case reg.Ch <- batToSend:

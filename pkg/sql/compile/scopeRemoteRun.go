@@ -1032,6 +1032,7 @@ func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext) (vm.In
 		regs := make([]*process.WaitRegister, len(t.LocalConnector))
 		for i, cp := range t.LocalConnector {
 			regs[i] = ctx.root.getRegister(cp.PipelineId, cp.ConnectorIndex)
+			regs[i].ReceiveCnt++
 		}
 		rrs := make([]colexec.ReceiveInfo, 0)
 		if len(t.RemoteConnector) > 0 {
@@ -1242,8 +1243,10 @@ func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext) (vm.In
 		}
 	case vm.Connector:
 		t := opr.GetConnect()
+		reg := ctx.root.getRegister(t.PipelineId, t.ConnectorIndex)
+		reg.ReceiveCnt++
 		v.Arg = &connector.Argument{
-			Reg: ctx.root.getRegister(t.PipelineId, t.ConnectorIndex),
+			Reg: reg,
 		}
 	case vm.Merge:
 		v.Arg = &merge.Argument{}

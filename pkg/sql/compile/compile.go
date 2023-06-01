@@ -42,7 +42,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/pb/timestamp"
 	"github.com/matrixorigin/matrixone/pkg/perfcounter"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
-	"github.com/matrixorigin/matrixone/pkg/sql/colexec/connector"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/deletion"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/dispatch"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/external"
@@ -256,6 +255,7 @@ func (c *Compile) run(s *Scope) error {
 
 // Run is an important function of the compute-layer, it executes a single sql according to its scope
 func (c *Compile) Run(_ uint64) error {
+	fmt.Printf("[ccompile] %s\n", DebugShowScopes(c.scope))
 	var wg sync.WaitGroup
 	errC := make(chan error, len(c.scope))
 	// fmt.Printf("run sql %+v", DebugShowScopes(c.scope))
@@ -1746,10 +1746,7 @@ func (c *Compile) compileBucketGroup(n *plan.Node, ss []*Scope, ns []*plan.Node,
 			ss[i].IsEnd = isEnd
 		}
 		if !ss[i].IsEnd {
-			ss[i].appendInstruction(vm.Instruction{
-				Op:  vm.Dispatch,
-				Arg: constructBroadcastDispatch(j, children, ss[i].NodeInfo.Addr, true, hashColumnIdx),
-			})
+			c.AddParallelDispatchScope(j, true, hashColumnIdx, ss[i], children)
 			j++
 			ss[i].IsEnd = true
 		}
@@ -1780,21 +1777,82 @@ func (c *Compile) compileBucketGroup(n *plan.Node, ss []*Scope, ns []*plan.Node,
 		children[i].Instructions = append(children[i].Instructions, lastOperator[i])
 	}
 
-	for i := range ss {
+	return []*Scope{c.newMergeScope(parent)}
+}
+
+func (c *Compile) AddParallelDispatchScope(idx int, shuffle bool, shuffleColIdx int, sender *Scope, receivers []*Scope) {
+	if sender.NodeInfo.Mcpu == 1 {
+		sender.Instructions = append(sender.Instructions, vm.Instruction{
+			Op:  vm.Dispatch,
+			Arg: constructBroadcastDispatch(idx, receivers, sender.NodeInfo.Addr, true, shuffleColIdx),
+		})
+
 		appended := false
-		for j := range children {
-			if children[j].NodeInfo.Addr == ss[i].NodeInfo.Addr {
-				children[j].PreScopes = append(children[j].PreScopes, ss[i])
+		for i := range receivers {
+			if isSameCN(sender.NodeInfo.Addr, receivers[i].NodeInfo.Addr) {
+				receivers[idx].PreScopes = append(receivers[idx].PreScopes, sender)
 				appended = true
 				break
 			}
 		}
+
 		if !appended {
-			children[0].PreScopes = append(children[0].PreScopes, ss[i])
+			logutil.Warnf("Coundn't find a suitable place to put prescopes during construct parallel dispatch")
+			receivers[0].PreScopes = append(receivers[idx].PreScopes, sender)
 		}
+		return
 	}
 
-	return []*Scope{c.newMergeScope(parent)}
+	concurrNum := sender.NodeInfo.Mcpu
+	concurrScopes := make([]*Scope, concurrNum)
+	for i := range concurrScopes {
+		concurrScopes[i] = &Scope{
+			Magic: Merge,
+			NodeInfo: engine.Node{
+				Addr: sender.NodeInfo.Addr,
+				Mcpu: 1,
+			},
+		}
+		concurrScopes[i].Proc = process.NewWithAnalyze(c.proc, c.ctx, 1, c.anal.analInfos)
+
+		concurrScopes[i].Instructions = append(concurrScopes[i].Instructions, vm.Instruction{
+			Op:      vm.Merge,
+			Idx:     c.anal.curr,
+			IsFirst: c.anal.isFirst,
+			Arg:     &merge.Argument{},
+		})
+		dispatch := constructBroadcastDispatch(idx, receivers, concurrScopes[i].NodeInfo.Addr, shuffle, shuffleColIdx)
+		concurrScopes[i].Instructions = append(concurrScopes[i].Instructions, vm.Instruction{
+			Op:      vm.Dispatch,
+			Idx:     c.anal.curr,
+			IsFirst: c.anal.isFirst,
+			Arg:     dispatch,
+		})
+	}
+
+	sender.appendInstruction(vm.Instruction{
+		Op:  vm.Dispatch,
+		Arg: constructDispatchLocal(false, false, extraRegisters(concurrScopes, 0)),
+	})
+	sender.IsEnd = true
+	// concurrScopes' len must greater than 2 and they do
+	// have same addr with sender so it is safe to do this
+	concurrScopes[0].PreScopes = append(concurrScopes[0].PreScopes, sender)
+
+	appended := false
+	for i := range receivers {
+		if isSameCN(receivers[i].NodeInfo.Addr, sender.NodeInfo.Addr) {
+			receivers[idx].PreScopes = append(receivers[idx].PreScopes, concurrScopes...)
+			appended = true
+			break
+		}
+	}
+	if !appended {
+		logutil.Warnf("Coundn't find a suitable place to put prescopes during construct parallel dispatch")
+		receivers[0].PreScopes = append(receivers[idx].PreScopes, concurrScopes...)
+	}
+
+	return
 }
 
 //func (c *Compile) newInsertMergeScope(arg *insert.Argument, ss []*Scope) *Scope {
@@ -1894,10 +1952,8 @@ func (c *Compile) newMergeScope(ss []*Scope) *Scope {
 	for i := range ss {
 		if !ss[i].IsEnd {
 			ss[i].appendInstruction(vm.Instruction{
-				Op: vm.Connector,
-				Arg: &connector.Argument{
-					Reg: rs.Proc.Reg.MergeReceivers[j],
-				},
+				Op:  vm.Connector,
+				Arg: constructConnector(rs.Proc.Reg.MergeReceivers[j]),
 			})
 			j++
 		}
@@ -2021,40 +2077,6 @@ func (c *Compile) newJoinScopeListWithBucket(rs, ss, children []*Scope) []*Scope
 	return rs
 }
 
-//func (c *Compile) newJoinScopeList(ss []*Scope, children []*Scope) []*Scope {
-//rs := make([]*Scope, len(ss))
-//// join's input will record in the left/right scope when JoinRun
-//// so set it to false here.
-//c.anal.isFirst = false
-//for i := range ss {
-//if ss[i].IsEnd {
-//rs[i] = ss[i]
-//continue
-//}
-//chp := c.newMergeScope(dupScopeList(children))
-//rs[i] = new(Scope)
-//rs[i].Magic = Remote
-//rs[i].IsJoin = true
-//rs[i].NodeInfo = ss[i].NodeInfo
-//rs[i].PreScopes = []*Scope{ss[i], chp}
-//rs[i].Proc = process.NewWithAnalyze(c.proc, c.ctx, 2, c.anal.Nodes())
-//ss[i].appendInstruction(vm.Instruction{
-//Op: vm.Connector,
-//Arg: &connector.Argument{
-//Reg: rs[i].Proc.Reg.MergeReceivers[0],
-//},
-//})
-//chp.appendInstruction(vm.Instruction{
-//Op: vm.Connector,
-//Arg: &connector.Argument{
-//Reg: rs[i].Proc.Reg.MergeReceivers[1],
-//},
-//})
-//chp.IsEnd = true
-//}
-//return rs
-//}
-
 func (c *Compile) newBroadcastJoinScopeList(ss []*Scope, children []*Scope) []*Scope {
 	length := len(ss)
 	rs := make([]*Scope, length)
@@ -2074,10 +2096,8 @@ func (c *Compile) newBroadcastJoinScopeList(ss []*Scope, children []*Scope) []*S
 		rs[i].PreScopes = []*Scope{ss[i]}
 		rs[i].Proc = process.NewWithAnalyze(c.proc, c.ctx, 2, c.anal.Nodes())
 		ss[i].appendInstruction(vm.Instruction{
-			Op: vm.Connector,
-			Arg: &connector.Argument{
-				Reg: rs[i].Proc.Reg.MergeReceivers[0],
-			},
+			Op:  vm.Connector,
+			Arg: constructConnector(rs[i].Proc.Reg.MergeReceivers[0]),
 		})
 	}
 
@@ -2508,6 +2528,7 @@ func isLaunchMode(cnlist engine.Nodes) bool {
 }
 
 func isSameCN(addr string, currentCNAddr string) bool {
+	return addr == currentCNAddr
 	// just a defensive judgment. In fact, we shouldn't have received such data.
 	parts1 := strings.Split(addr, ":")
 	if len(parts1) != 2 {

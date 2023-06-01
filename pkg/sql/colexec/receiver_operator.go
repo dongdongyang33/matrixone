@@ -36,6 +36,7 @@ func (r *ReceiverOperator) InitReceiver(proc *process.Process, isMergeType bool)
 				Dir:  reflect.SelectRecv,
 				Chan: reflect.ValueOf(mr.Ch),
 			}
+			r.eachReceiverCnt = append(r.eachReceiverCnt, mr.ReceiveCnt)
 		}
 	}
 }
@@ -43,12 +44,17 @@ func (r *ReceiverOperator) InitReceiver(proc *process.Process, isMergeType bool)
 func (r *ReceiverOperator) ReceiveFromSingleReg(regIdx int, analyze process.Analyze) (*batch.Batch, bool, error) {
 	start := time.Now()
 	defer analyze.WaitStop(start)
+	rr := r.proc.Reg.MergeReceivers[regIdx]
 	select {
 	case <-r.proc.Ctx.Done():
 		return nil, true, nil
-	case bat, ok := <-r.proc.Reg.MergeReceivers[regIdx].Ch:
+	case bat, ok := <-rr.Ch:
 		if !ok {
 			return nil, true, nil
+		}
+		if bat == nil {
+			rr.ReceiveCnt--
+			return nil, rr.ReceiveCnt <= 0, nil
 		}
 		return bat, false, nil
 	}
@@ -100,8 +106,12 @@ func (r *ReceiverOperator) ReceiveFromAllRegs(analyze process.Analyze) (*batch.B
 		pointer := value.UnsafePointer()
 		bat := (*batch.Batch)(pointer)
 		if bat == nil {
-			r.receiverListener = append(r.receiverListener[:chosen], r.receiverListener[chosen+1:]...)
-			r.aliveMergeReceiver--
+			r.eachReceiverCnt[chosen]--
+			if r.eachReceiverCnt[chosen] <= 0 {
+				r.eachReceiverCnt = append(r.eachReceiverCnt[:chosen], r.eachReceiverCnt[chosen+1:]...)
+				r.receiverListener = append(r.receiverListener[:chosen], r.receiverListener[chosen+1:]...)
+				r.aliveMergeReceiver--
+			}
 			continue
 		}
 

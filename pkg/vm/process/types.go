@@ -54,8 +54,9 @@ type Analyze interface {
 
 // WaitRegister channel
 type WaitRegister struct {
-	Ctx context.Context
-	Ch  chan *batch.Batch
+	Ctx        context.Context
+	Ch         chan *batch.Batch
+	ReceiveCnt int32
 }
 
 // Register used in execution pipeline and shared with all operators of the same pipeline.

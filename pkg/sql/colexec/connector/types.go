@@ -15,6 +15,9 @@
 package connector
 
 import (
+	"fmt"
+	"sync/atomic"
+
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
 
@@ -30,5 +33,12 @@ func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 		case <-arg.Reg.Ctx.Done():
 		}
 	}
-	close(arg.Reg.Ch)
+	arg.CloseCh(proc)
+}
+
+func (arg *Argument) CloseCh(proc *process.Process) {
+	if atomic.AddInt32(&arg.Reg.ReceiveCnt, -1) <= 0 {
+		fmt.Printf("[connector.Close] proc %p close ch %p\n", proc, arg.Reg.Ch)
+		close(arg.Reg.Ch)
+	}
 }

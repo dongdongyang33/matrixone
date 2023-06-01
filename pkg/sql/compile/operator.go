@@ -442,6 +442,13 @@ func constructRestrict(n *plan.Node) *restrict.Argument {
 	}
 }
 
+func constructConnector(reg *process.WaitRegister) *connector.Argument {
+	reg.ReceiveCnt++
+	return &connector.Argument{
+		Reg: reg,
+	}
+}
+
 func constructDeletion(n *plan.Node, eg engine.Engine, proc *process.Process) (*deletion.Argument, error) {
 	oldCtx := n.DeleteCtx
 	delCtx := &deletion.DeleteCtx{
@@ -953,6 +960,10 @@ func constructDispatchLocal(all bool, isSink bool, regs []*process.WaitRegister)
 	} else {
 		arg.FuncId = dispatch.SendToAnyLocalFunc
 	}
+
+	for _, r := range regs {
+		r.ReceiveCnt++
+	}
 	return arg
 }
 
@@ -1022,6 +1033,7 @@ func constructDeleteDispatchAndLocal(
 	arg.LocalRegs = append(
 		arg.LocalRegs,
 		rs[currentIdx].Proc.Reg.MergeReceivers[currentIdx])
+	rs[currentIdx].Proc.Reg.MergeReceivers[currentIdx].ReceiveCnt++
 
 	ss[currentIdx].appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
@@ -1053,6 +1065,7 @@ func constructDispatchLocalAndRemote(idx int, ss []*Scope, currentCNAddr string)
 			// Local reg.
 			// Put them into arg.LocalRegs
 			arg.LocalRegs = append(arg.LocalRegs, s.Proc.Reg.MergeReceivers[idx])
+			s.Proc.Reg.MergeReceivers[idx].ReceiveCnt++
 			arg.ShuffleRegIdxLocal = append(arg.ShuffleRegIdxLocal, i)
 		} else {
 			// Remote reg.
