@@ -1782,7 +1782,15 @@ func (c *Compile) compileBucketGroup(n *plan.Node, ss []*Scope, ns []*plan.Node)
 			ss[i].IsEnd = isEnd
 		}
 		if !ss[i].IsEnd {
-			c.AddParallelDispatchScope(j, ss[i], children, n)
+			if n.Stats.Shuffle {
+				c.AddParallelDispatchScope(j, ss[i], children, n)
+			} else {
+				ss[i].appendInstruction(vm.Instruction{
+					Op:  vm.Dispatch,
+					Arg: constructBroadcastDispatch(j, children, ss[i].NodeInfo.Addr, n),
+				})
+			}
+
 			j++
 			ss[i].IsEnd = true
 		}
@@ -1842,6 +1850,9 @@ func (c *Compile) AddParallelDispatchScope(idx int, sender *Scope, receivers []*
 
 	// build the parallel parts
 	concurrNum := sender.NodeInfo.Mcpu
+	if concurrNum > 8 {
+		concurrNum = 8
+	}
 	concurrScopes := make([]*Scope, concurrNum)
 	for i := range concurrScopes {
 		concurrScopes[i] = &Scope{

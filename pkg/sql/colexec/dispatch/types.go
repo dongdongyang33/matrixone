@@ -16,7 +16,6 @@ package dispatch
 
 import (
 	"context"
-	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -133,14 +132,14 @@ func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 			case arg.LocalRegs[i].Ch <- nil:
 			}
 		}
-		fmt.Printf("[dispatch.Free] proc %p close ch %p (faied = %t)\n", proc, arg.LocalRegs[i].Ch, pipelineFailed)
+		//fmt.Printf("[dispatch.Free] proc %p close ch %p (faied = %t)\n", proc, arg.LocalRegs[i].Ch, pipelineFailed)
 		arg.CloseCh(proc, arg.LocalRegs[i])
 	}
 }
 
 func (arg *Argument) CloseCh(proc *process.Process, reg *process.WaitRegister) {
 	if atomic.AddInt32(&reg.ReceiveCnt, -1) <= 0 {
-		fmt.Printf("[dispatch.Close] proc %p close ch %p\n", proc, reg.Ch)
+		//fmt.Printf("[dispatch.Close] proc %p close ch %p\n", proc, reg.Ch)
 		close(reg.Ch)
 	}
 }
