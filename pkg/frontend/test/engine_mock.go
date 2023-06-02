@@ -73,7 +73,7 @@ func (mr *MockStatisticsMockRecorder) Size(ctx, columnName interface{}) *gomock.
 }
 
 // Stats mocks base method.
-func (m *MockStatistics) Stats(ctx context.Context, statsInfoMap any) bool {
+func (m *MockStatistics) Stats(ctx context.Context, partitionTables []any, statsInfoMap any) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Stats", ctx, statsInfoMap)
 	ret0, _ := ret[0].(bool)
@@ -432,7 +432,7 @@ func (mr *MockRelationMockRecorder) Size(ctx, columnName interface{}) *gomock.Ca
 }
 
 // Stats mocks base method.
-func (m *MockRelation) Stats(ctx context.Context, statsInfoMap any) bool {
+func (m *MockRelation) Stats(ctx context.Context, partitionTables []any, statsInfoMap any) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Stats", ctx, statsInfoMap)
 	ret0, _ := ret[0].(bool)
@@ -509,21 +509,6 @@ func (m *MockRelation) Write(arg0 context.Context, arg1 *batch.Batch) error {
 	ret := m.ctrl.Call(m, "Write", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
-}
-
-// MaxAndMinValues mocks base method.
-func (m *MockRelation) GetColumMetadataScanInfo(ctx context.Context, name string) ([]*plan.MetadataScanInfo, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetColumMetadataScanInfo", ctx)
-	ret0, _ := ret[0].([]*plan.MetadataScanInfo)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// MaxAndMinValues indicates an expected call of MaxAndMinValues.
-func (mr *MockRelationMockRecorder) GetColumMetadataScanInfo(ctx interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetColumMetadataScanInfo", reflect.TypeOf((*MockRelation)(nil).GetColumMetadataScanInfo), ctx)
 }
 
 // Write indicates an expected call of Write.

@@ -84,7 +84,7 @@ type ClusterByDef struct {
 }
 
 type Statistics interface {
-	Stats(ctx context.Context, statsInfoMap any) bool
+	Stats(ctx context.Context, partitionTables []any, statsInfoMap any) bool
 	Rows(ctx context.Context) (int64, error)
 	Size(ctx context.Context, columnName string) (int64, error)
 }
@@ -552,7 +552,7 @@ type Relation interface {
 
 	GetEngineType() EngineType
 
-	GetColumMetadataScanInfo(ctx context.Context, name string) ([]*plan.MetadataScanInfo, error)
+	GetMetadataScanInfoBytes(ctx context.Context, name string) ([][]byte, error)
 }
 
 type Reader interface {
