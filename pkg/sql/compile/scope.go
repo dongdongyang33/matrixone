@@ -112,7 +112,7 @@ func (s *Scope) MergeRun(c *Compile) error {
 				errChan <- cs.Run(c)
 				wg.Done()
 			}(scope)
-		case Merge, MergeInsert:
+		case Merge, MergeInsert, EmptyMerge:
 			go func(cs *Scope) {
 				errChan <- cs.MergeRun(c)
 				wg.Done()
@@ -137,6 +137,30 @@ func (s *Scope) MergeRun(c *Compile) error {
 	defer wg.Wait()
 
 	s.Proc.Ctx = context.WithValue(s.Proc.Ctx, defines.EngineKey{}, c.e)
+
+	// EmptyMerge is a specail type which produced by TotallyParallel
+	// it has no instruction so it need to collect all status of its
+	// prescope
+	if s.Magic == EmptyMerge {
+		prelen := len(s.PreScopes)
+		for {
+			select {
+			case <-s.Proc.Ctx.Done():
+				return nil
+			case err := <-errChan:
+				if err != nil {
+					s.Proc.Cancel()
+					return err
+				}
+				prelen--
+				if prelen == 0 {
+					s.Proc.Cancel()
+					return nil
+				}
+			}
+		}
+	}
+
 	var errReceiveChan chan error
 	if len(s.RemoteReceivRegInfos) > 0 {
 		errReceiveChan = make(chan error, len(s.RemoteReceivRegInfos))
@@ -594,6 +618,21 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 		}
 	}
 	if !flg {
+		if s.IsTotallyParallel {
+			lastIns := s.Instructions[len(s.Instructions)-1]
+			dupNum := int32(len(ss))
+			for i := range ss {
+				if !ss[i].appendInstruction(DupLastInstruction(&dupNum, lastIns)) {
+					panic("cannot append last instruction when totally parallel")
+				}
+				ss[i].IsEnd = true
+			}
+			s.Instructions = s.Instructions[:0]
+			s.Magic = EmptyMerge
+			s.PreScopes = ss
+			return s
+		}
+
 		for i := range ss {
 			ss[i].Instructions = ss[i].Instructions[:len(ss[i].Instructions)-1]
 		}
@@ -605,6 +644,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 		s.Instructions[1] = s.Instructions[len(s.Instructions)-1]
 		s.Instructions = s.Instructions[:2]
 	}
+
 	s.Magic = Merge
 	s.PreScopes = ss
 	cnt := 0
@@ -638,110 +678,13 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 	return s
 }
 
-func (s *Scope) appendInstruction(in vm.Instruction) {
+func (s *Scope) appendInstruction(in vm.Instruction) bool {
 	if !s.IsEnd {
 		s.Instructions = append(s.Instructions, in)
+		return true
 	}
+	return false
 }
-
-/*
-func dupScopeList(ss []*Scope) []*Scope {
-	rs := make([]*Scope, len(ss))
-	regMap := make(map[*process.WaitRegister]*process.WaitRegister)
-	var err error
-	for i := range ss {
-		rs[i], err = copyScope(ss[i], regMap)
-		if err != nil {
-			return nil
-		}
-	}
-
-	for i := range ss {
-		err = fillInstructionsByCopyScope(rs[i], ss[i], regMap)
-		if err != nil {
-			return nil
-		}
-	}
-	return rs
-}
-
-func copyScope(srcScope *Scope, regMap map[*process.WaitRegister]*process.WaitRegister) (*Scope, error) {
-	var err error
-	newScope := &Scope{
-		Magic:        srcScope.Magic,
-		IsJoin:       srcScope.IsJoin,
-		IsEnd:        srcScope.IsEnd,
-		IsRemote:     srcScope.IsRemote,
-		Plan:         srcScope.Plan,
-		PreScopes:    make([]*Scope, len(srcScope.PreScopes)),
-		Instructions: make([]vm.Instruction, len(srcScope.Instructions)),
-		NodeInfo: engine.Node{
-			Rel:  srcScope.NodeInfo.Rel,
-			Mcpu: srcScope.NodeInfo.Mcpu,
-			Id:   srcScope.NodeInfo.Id,
-			Addr: srcScope.NodeInfo.Addr,
-			Data: make([][]byte, len(srcScope.NodeInfo.Data)),
-		},
-		RemoteReceivRegInfos: srcScope.RemoteReceivRegInfos,
-	}
-
-	// copy node.Data
-	copy(newScope.NodeInfo.Data, srcScope.NodeInfo.Data)
-
-	if srcScope.DataSource != nil {
-		newScope.DataSource = &Source{
-			PushdownId:   srcScope.DataSource.PushdownId,
-			PushdownAddr: srcScope.DataSource.PushdownAddr,
-			SchemaName:   srcScope.DataSource.SchemaName,
-			RelationName: srcScope.DataSource.RelationName,
-			Attributes:   srcScope.DataSource.Attributes,
-			Timestamp: timestamp.Timestamp{
-				PhysicalTime: srcScope.DataSource.Timestamp.PhysicalTime,
-				LogicalTime:  srcScope.DataSource.Timestamp.LogicalTime,
-				NodeID:       srcScope.DataSource.Timestamp.NodeID,
-			},
-			// read only.
-			Expr:     srcScope.DataSource.Expr,
-			TableDef: srcScope.DataSource.TableDef,
-		}
-
-		// IF const run.
-		if srcScope.DataSource.Bat != nil {
-			newScope.DataSource.Bat, _ = constructValueScanBatch(context.TODO(), nil, nil)
-		}
-	}
-
-	newScope.Proc = process.NewFromProc(srcScope.Proc, srcScope.Proc.Ctx, len(srcScope.Proc.Reg.MergeReceivers))
-	for i := range srcScope.Proc.Reg.MergeReceivers {
-		regMap[srcScope.Proc.Reg.MergeReceivers[i]] = newScope.Proc.Reg.MergeReceivers[i]
-	}
-
-	//copy preScopes.
-	for i := range srcScope.PreScopes {
-		newScope.PreScopes[i], err = copyScope(srcScope.PreScopes[i], regMap)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return newScope, nil
-}
-
-func fillInstructionsByCopyScope(targetScope *Scope, srcScope *Scope,
-	regMap map[*process.WaitRegister]*process.WaitRegister) error {
-	var err error
-
-	for i := range srcScope.PreScopes {
-		if err = fillInstructionsByCopyScope(targetScope.PreScopes[i], srcScope.PreScopes[i], regMap); err != nil {
-			return err
-		}
-	}
-
-	for i := range srcScope.Instructions {
-		targetScope.Instructions[i] = dupInstruction(&srcScope.Instructions[i], regMap)
-	}
-	return nil
-}
-*/
 
 func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) {
 	for i := range s.RemoteReceivRegInfos {

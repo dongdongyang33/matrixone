@@ -17,6 +17,7 @@ package dispatch
 import (
 	"bytes"
 	"context"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
@@ -37,6 +38,9 @@ func Prepare(proc *process.Process, arg any) error {
 	ctr.localRegsCnt = len(ap.LocalRegs)
 	ctr.remoteRegsCnt = len(ap.RemoteRegs)
 	ctr.aliveRegCnt = ctr.localRegsCnt + ctr.remoteRegsCnt
+	if atomic.LoadInt32(ap.ParallelNum) > 0 {
+		ctr.isParallel = true
+	}
 
 	switch ap.FuncId {
 	case SendToAllFunc:
@@ -145,7 +149,10 @@ func (arg *Argument) prepareRemote(proc *process.Process) {
 		if arg.FuncId == ShuffleToAllFunc {
 			arg.ctr.remoteToIdx[rr.Uuid] = arg.ShuffleRegIdxRemote[i]
 		}
-		colexec.Srv.PutNotifyChIntoUuidMap(rr.Uuid, proc)
+		if !arg.ctr.isParallel {
+			colexec.Srv.PutParallelNumForUuid(rr.Uuid, 1)
+		}
+		colexec.Srv.PutProcIntoUuidMap(rr.Uuid, proc)
 	}
 }
 

@@ -16,6 +16,7 @@ package dispatch
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -67,6 +68,10 @@ type container struct {
 	// prepared specify waiting remote receiver ready or not
 	prepared bool
 
+	// isParallel specify it is parallel or not
+	// if yes, close with the parallel-close way
+	isParallel bool
+
 	// for send-to-any function decide send to which reg
 	sendCnt       int
 	aliveRegCnt   int
@@ -98,9 +103,18 @@ type Argument struct {
 	ShuffleColMax       int64
 	ShuffleRegIdxLocal  []int
 	ShuffleRegIdxRemote []int
+
+	// for parallel dispatch
+	ParallelNum *int32
 }
 
 func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
+	if arg.ctr.isParallel {
+		if atomic.AddInt32(arg.ParallelNum, -1) > 0 {
+			return
+		}
+	}
+
 	if arg.ctr.isRemote {
 		if !arg.ctr.prepared {
 			arg.waitRemoteRegsReady(proc)
@@ -120,6 +134,7 @@ func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 				message.Err = pipeline.EncodedMessageError(timeoutCtx, err)
 			}
 			r.cs.Write(timeoutCtx, message)
+			colexec.Srv.CleanUuidFromMap(r.uuid)
 			close(r.doneCh)
 		}
 	}

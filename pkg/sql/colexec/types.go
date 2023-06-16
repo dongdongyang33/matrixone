@@ -62,7 +62,8 @@ type Server struct {
 
 type UuidProcMap struct {
 	sync.Mutex
-	mp map[uuid.UUID]*process.Process
+	cntMp map[uuid.UUID]int
+	mp    map[uuid.UUID][]*process.Process
 }
 
 type CnSegmentMap struct {

@@ -65,6 +65,7 @@ const (
 	DropSequence
 	AlterSequence
 	MagicDelete
+	EmptyMerge
 )
 
 // Source contains information of a relation which will be used in execution,
@@ -111,6 +112,11 @@ type Scope struct {
 
 	// IsRemote means the pipeline is load
 	IsLoad bool
+
+	// IsTotallyParallel means execute all instructions in parallel
+	// including the last instructions (except when the pipeline-breaker
+	// is included in the instructions)
+	IsTotallyParallel bool
 
 	Plan *plan.Plan
 	// DataSource stores information about data source.

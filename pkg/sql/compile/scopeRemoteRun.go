@@ -123,33 +123,37 @@ func CnServerMessageHandler(
 func cnMessageHandle(receiver *messageReceiverOnServer) error {
 	switch receiver.messageTyp {
 	case pipeline.PrepareDoneNotifyMessage: // notify the dispatch executor
-		opProc, err := receiver.GetProcByUuid(receiver.messageUuid)
-		if err != nil || opProc == nil {
+		parallelNum, err := receiver.GetParallelNumByUuid(receiver.messageUuid)
+		if parallelNum == 0 || err != nil {
 			return err
 		}
 
-		putCtx, putCancel := context.WithTimeout(context.Background(), HandleNotifyTimeout)
-		defer putCancel()
 		doneCh := make(chan struct{})
-		info := process.WrapCs{
-			MsgId:  receiver.messageId,
-			Uid:    receiver.messageUuid,
-			Cs:     receiver.clientSession,
-			DoneCh: doneCh,
-		}
+		for i := 0; i < parallelNum; i++ {
+			opProc, err := receiver.GetProcByUuidAndIndx(receiver.messageUuid, i)
+			if err != nil || opProc == nil {
+				return err
+			}
+			putCtx, putCancel := context.WithTimeout(context.Background(), HandleNotifyTimeout)
+			defer putCancel()
+			info := process.WrapCs{
+				MsgId:  receiver.messageId,
+				Uid:    receiver.messageUuid,
+				Cs:     receiver.clientSession,
+				DoneCh: doneCh,
+			}
 
-		select {
-		case <-putCtx.Done():
-			return moerr.NewInternalError(receiver.ctx, "send notify msg to dispatch operator timeout")
-		case <-receiver.ctx.Done():
-			logutil.Errorf("receiver conctx done during send notify to dispatch operator")
-		case <-opProc.Ctx.Done():
-			logutil.Errorf("dispatch operator context done")
-		case opProc.DispatchNotifyCh <- info:
-			// TODO: need fix. It may hung here if dispatch operator receive the info but
-			// end without close doneCh
-			<-doneCh
+			select {
+			case <-putCtx.Done():
+				return moerr.NewInternalError(receiver.ctx, "send notify msg to dispatch operator timeout")
+			case <-receiver.ctx.Done():
+				logutil.Errorf("receiver conctx done during send notify to dispatch operator")
+			case <-opProc.Ctx.Done():
+				logutil.Errorf("dispatch operator context done")
+			case opProc.DispatchNotifyCh <- info:
+			}
 		}
+		<-doneCh
 		return nil
 
 	case pipeline.PipelineMessage:

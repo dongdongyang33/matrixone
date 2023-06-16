@@ -1108,7 +1108,7 @@ func constructDispatchLocalAndRemote(idx int, ss []*Scope, currentCNAddr string)
 
 // ShuffleJoinDispatch is a cross-cn dispath
 // and it will send same batch to all register
-func constructBroadcastDispatch(idx int, ss []*Scope, currentCNAddr string, node *plan.Node) *dispatch.Argument {
+func constructBroadcastDispatch(idx int, attachScope *Scope, ss []*Scope, currentCNAddr string, node *plan.Node) *dispatch.Argument {
 	hasRemote, arg := constructDispatchLocalAndRemote(idx, ss, currentCNAddr)
 	if node.Stats.Shuffle {
 		arg.FuncId = dispatch.ShuffleToAllFunc
@@ -1116,8 +1116,13 @@ func constructBroadcastDispatch(idx int, ss []*Scope, currentCNAddr string, node
 		arg.ShuffleType = int32(node.Stats.ShuffleType)
 		arg.ShuffleColMin = node.Stats.ShuffleColMin
 		arg.ShuffleColMax = node.Stats.ShuffleColMax
+
+		if attachScope != nil {
+			attachScope.IsTotallyParallel = true
+		}
 		return arg
 	}
+
 	if hasRemote {
 		arg.FuncId = dispatch.SendToAllFunc
 	} else {
@@ -1649,4 +1654,38 @@ func getRel(ctx context.Context, proc *process.Process, eg engine.Engine, ref *p
 		}
 	}
 	return relation, uniqueIndexTables, err
+}
+
+func constructConnector(s *Scope, idx int) *connector.Argument {
+	return &connector.Argument{
+		Reg: s.Proc.Reg.MergeReceivers[idx],
+	}
+}
+
+func DupLastInstruction(dupNum *int32, ins vm.Instruction) vm.Instruction {
+	dup := vm.Instruction{Op: ins.Op, Idx: ins.Idx, IsFirst: ins.IsFirst, IsLast: ins.IsLast}
+	switch ins.Op {
+	case vm.Dispatch:
+		t := ins.Arg.(*dispatch.Argument)
+		arg := &dispatch.Argument{
+			IsSink:      t.IsSink,
+			FuncId:      t.FuncId,
+			LocalRegs:   make([]*process.WaitRegister, len(t.LocalRegs)),
+			RemoteRegs:  make([]colexec.ReceiveInfo, len(t.RemoteRegs)),
+			ParallelNum: dupNum,
+		}
+
+		for i := range arg.LocalRegs {
+			arg.LocalRegs[i] = t.LocalRegs[i]
+		}
+
+		for i := range arg.RemoteRegs {
+			arg.RemoteRegs[i] = t.RemoteRegs[i]
+		}
+		dup.Arg = arg
+	default:
+		panic(fmt.Sprintf("unexpected last instruction type '%d' when dup last", ins.Op))
+	}
+
+	return dup
 }

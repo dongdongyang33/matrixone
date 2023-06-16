@@ -45,7 +45,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/pb/timestamp"
 	"github.com/matrixorigin/matrixone/pkg/perfcounter"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
-	"github.com/matrixorigin/matrixone/pkg/sql/colexec/connector"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/deletion"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/dispatch"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/external"
@@ -1414,7 +1413,7 @@ func (c *Compile) compileUnion(n *plan.Node, ss []*Scope, children []*Scope) []*
 	mergeChildren := c.newMergeScope(ss)
 	mergeChildren.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
-		Arg: constructBroadcastDispatch(0, rs, c.addr, n),
+		Arg: constructBroadcastDispatch(0, mergeChildren, rs, c.addr, n),
 	})
 	rs[idx].PreScopes = append(rs[idx].PreScopes, mergeChildren)
 	return rs
@@ -1838,7 +1837,7 @@ func (c *Compile) compileBucketGroup(n *plan.Node, ss []*Scope, ns []*plan.Node)
 		if !ss[i].IsEnd {
 			ss[i].appendInstruction(vm.Instruction{
 				Op:  vm.Dispatch,
-				Arg: constructBroadcastDispatch(j, children, ss[i].NodeInfo.Addr, n),
+				Arg: constructBroadcastDispatch(j, ss[i], children, ss[i].NodeInfo.Addr, n),
 			})
 			j++
 			ss[i].IsEnd = true
@@ -1984,10 +1983,8 @@ func (c *Compile) newMergeScope(ss []*Scope) *Scope {
 	for i := range ss {
 		if !ss[i].IsEnd {
 			ss[i].appendInstruction(vm.Instruction{
-				Op: vm.Connector,
-				Arg: &connector.Argument{
-					Reg: rs.Proc.Reg.MergeReceivers[j],
-				},
+				Op:  vm.Connector,
+				Arg: constructConnector(rs, j),
 			})
 			j++
 		}
@@ -2087,7 +2084,7 @@ func (c *Compile) newJoinScopeListWithBucket(rs, ss, children []*Scope, n *plan.
 	leftMerge := c.newMergeScope(ss)
 	leftMerge.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
-		Arg: constructBroadcastDispatch(0, rs, c.addr, n),
+		Arg: constructBroadcastDispatch(0, leftMerge, rs, c.addr, n),
 	})
 	leftMerge.IsEnd = true
 
@@ -2096,7 +2093,7 @@ func (c *Compile) newJoinScopeListWithBucket(rs, ss, children []*Scope, n *plan.
 	rightMerge := c.newMergeScope(children)
 	rightMerge.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
-		Arg: constructBroadcastDispatch(1, rs, c.addr, n),
+		Arg: constructBroadcastDispatch(1, rightMerge, rs, c.addr, n),
 	})
 	rightMerge.IsEnd = true
 
@@ -2110,40 +2107,6 @@ func (c *Compile) newJoinScopeListWithBucket(rs, ss, children []*Scope, n *plan.
 	rs[idx].PreScopes = append(rs[idx].PreScopes, leftMerge, rightMerge)
 	return rs
 }
-
-//func (c *Compile) newJoinScopeList(ss []*Scope, children []*Scope) []*Scope {
-//rs := make([]*Scope, len(ss))
-//// join's input will record in the left/right scope when JoinRun
-//// so set it to false here.
-//c.anal.isFirst = false
-//for i := range ss {
-//if ss[i].IsEnd {
-//rs[i] = ss[i]
-//continue
-//}
-//chp := c.newMergeScope(dupScopeList(children))
-//rs[i] = new(Scope)
-//rs[i].Magic = Remote
-//rs[i].IsJoin = true
-//rs[i].NodeInfo = ss[i].NodeInfo
-//rs[i].PreScopes = []*Scope{ss[i], chp}
-//rs[i].Proc = process.NewWithAnalyze(c.proc, c.ctx, 2, c.anal.Nodes())
-//ss[i].appendInstruction(vm.Instruction{
-//Op: vm.Connector,
-//Arg: &connector.Argument{
-//Reg: rs[i].Proc.Reg.MergeReceivers[0],
-//},
-//})
-//chp.appendInstruction(vm.Instruction{
-//Op: vm.Connector,
-//Arg: &connector.Argument{
-//Reg: rs[i].Proc.Reg.MergeReceivers[1],
-//},
-//})
-//chp.IsEnd = true
-//}
-//return rs
-//}
 
 func (c *Compile) newBroadcastJoinScopeList(ss []*Scope, children []*Scope, n *plan.Node) []*Scope {
 	length := len(ss)
@@ -2164,10 +2127,8 @@ func (c *Compile) newBroadcastJoinScopeList(ss []*Scope, children []*Scope, n *p
 		rs[i].PreScopes = []*Scope{ss[i]}
 		rs[i].Proc = process.NewWithAnalyze(c.proc, c.ctx, 2, c.anal.Nodes())
 		ss[i].appendInstruction(vm.Instruction{
-			Op: vm.Connector,
-			Arg: &connector.Argument{
-				Reg: rs[i].Proc.Reg.MergeReceivers[0],
-			},
+			Op:  vm.Connector,
+			Arg: constructConnector(rs[i], 0),
 		})
 	}
 
@@ -2177,7 +2138,7 @@ func (c *Compile) newBroadcastJoinScopeList(ss []*Scope, children []*Scope, n *p
 	mergeChildren := c.newMergeScope(children)
 	mergeChildren.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
-		Arg: constructBroadcastDispatch(1, rs, c.addr, n),
+		Arg: constructBroadcastDispatch(1, mergeChildren, rs, c.addr, n),
 	})
 	mergeChildren.IsEnd = true
 	rs[idx].PreScopes = append(rs[idx].PreScopes, mergeChildren)

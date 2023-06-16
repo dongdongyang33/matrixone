@@ -16,6 +16,7 @@ package colexec
 
 import (
 	"github.com/google/uuid"
+	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/logservice"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
@@ -33,10 +34,13 @@ func NewServer(client logservice.CNHAKeeperClient) *Server {
 		return Srv
 	}
 	Srv = &Server{
-		mp:            make(map[uint64]*process.WaitRegister),
-		hakeeper:      client,
-		uuidCsChanMap: UuidProcMap{mp: make(map[uuid.UUID]*process.Process)},
-		cnSegmentMap:  CnSegmentMap{mp: make(map[objectio.Segmentid]int32)},
+		mp:       make(map[uint64]*process.WaitRegister),
+		hakeeper: client,
+		uuidCsChanMap: UuidProcMap{
+			cntMp: make(map[uuid.UUID]int),
+			mp:    make(map[uuid.UUID][]*process.Process),
+		},
+		cnSegmentMap: CnSegmentMap{mp: make(map[objectio.Segmentid]int32)},
 	}
 	return Srv
 }
@@ -56,20 +60,58 @@ func (srv *Server) RegistConnector(reg *process.WaitRegister) uint64 {
 	return srv.id
 }
 
-func (srv *Server) GetNotifyChByUuid(u uuid.UUID) (*process.Process, bool) {
+func (srv *Server) PutParallelNumForUuid(u uuid.UUID, num int) error {
 	srv.uuidCsChanMap.Lock()
 	defer srv.uuidCsChanMap.Unlock()
-	p, ok := srv.uuidCsChanMap.mp[u]
+
+	if _, ok := srv.uuidCsChanMap.cntMp[u]; ok {
+		return moerr.NewInternalErrorNoCtx("uuid %s parallel count had been set", u)
+	}
+	srv.uuidCsChanMap.cntMp[u] = num
+	return nil
+}
+
+func (srv *Server) GetParallelNumForUuid(u uuid.UUID) (int, bool) {
+	srv.uuidCsChanMap.Lock()
+	defer srv.uuidCsChanMap.Unlock()
+
+	ret, ok := srv.uuidCsChanMap.cntMp[u]
+	return ret, ok
+}
+
+func (srv *Server) GetProcByUuid(u uuid.UUID, idx int) (*process.Process, bool) {
+	srv.uuidCsChanMap.Lock()
+	defer srv.uuidCsChanMap.Unlock()
+
+	ps, ok := srv.uuidCsChanMap.mp[u]
 	if !ok {
 		return nil, false
 	}
-	return p, true
+
+	if idx >= len(ps) {
+		return nil, false
+	}
+
+	return ps[idx], true
 }
 
-func (srv *Server) PutNotifyChIntoUuidMap(u uuid.UUID, p *process.Process) error {
+func (srv *Server) PutProcIntoUuidMap(u uuid.UUID, p *process.Process) error {
 	srv.uuidCsChanMap.Lock()
 	defer srv.uuidCsChanMap.Unlock()
-	srv.uuidCsChanMap.mp[u] = p
+	ps, ok := srv.uuidCsChanMap.mp[u]
+	if ok {
+		ps = append(ps, p)
+	} else {
+		srv.uuidCsChanMap.mp[u] = []*process.Process{p}
+	}
+	return nil
+}
+
+func (srv *Server) CleanUuidFromMap(u uuid.UUID) error {
+	srv.uuidCsChanMap.Lock()
+	defer srv.uuidCsChanMap.Unlock()
+	delete(srv.uuidCsChanMap.cntMp, u)
+	delete(srv.uuidCsChanMap.cntMp, u)
 	return nil
 }
 

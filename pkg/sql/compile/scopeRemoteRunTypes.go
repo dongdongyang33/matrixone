@@ -412,7 +412,7 @@ func generateProcessHelper(data []byte, cli client.TxnClient) (processHelper, er
 	return result, nil
 }
 
-func (receiver *messageReceiverOnServer) GetProcByUuid(uid uuid.UUID) (*process.Process, error) {
+func (receiver *messageReceiverOnServer) GetProcByUuidAndIndx(uid uuid.UUID, idx int) (*process.Process, error) {
 	getCtx, getCancel := context.WithTimeout(context.Background(), HandleNotifyTimeout)
 	defer getCancel()
 	var opProc *process.Process
@@ -427,7 +427,7 @@ outter:
 			logutil.Errorf("receiver conctx done during get dispatch process")
 			return nil, nil
 		default:
-			if opProc, ok = colexec.Srv.GetNotifyChByUuid(opUuid); !ok {
+			if opProc, ok = colexec.Srv.GetProcByUuid(opUuid, idx); !ok {
 				runtime.Gosched()
 			} else {
 				break outter
@@ -435,4 +435,28 @@ outter:
 		}
 	}
 	return opProc, nil
+}
+
+func (receiver *messageReceiverOnServer) GetParallelNumByUuid(uid uuid.UUID) (int, error) {
+	getCtx, getCancel := context.WithTimeout(context.Background(), HandleNotifyTimeout)
+	defer getCancel()
+	var num int
+	var ok bool
+outter:
+	for {
+		select {
+		case <-getCtx.Done():
+			return 0, moerr.NewInternalError(receiver.ctx, "get dispatch process by uuid timeout")
+		case <-receiver.ctx.Done():
+			logutil.Errorf("receiver conctx done during get dispatch process")
+			return 0, nil
+		default:
+			if num, ok = colexec.Srv.GetParallelNumForUuid(uid); !ok {
+				runtime.Gosched()
+			} else {
+				break outter
+			}
+		}
+	}
+	return num, nil
 }
