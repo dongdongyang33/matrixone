@@ -308,6 +308,7 @@ func (c *Compile) Run(_ uint64) error {
 
 // run once
 func (c *Compile) runOnce() error {
+	fmt.Printf("[ccompile] %s\n", DebugShowScopes(c.scope))
 	var wg sync.WaitGroup
 
 	errC := make(chan error, len(c.scope))
@@ -2189,6 +2190,8 @@ func (c *Compile) newJoinBuildScope(s *Scope, ss []*Scope) *Scope {
 // Transplant the source's RemoteReceivRegInfos which index equal to sourceIdx to
 // target with new index targetIdx
 func regTransplant(source, target *Scope, sourceIdx, targetIdx int) {
+	fmt.Printf("[regTransplant] source[%d] = %p.%p, target[%d] = %p.%p\n", sourceIdx, source, source.Proc.Reg.MergeReceivers[sourceIdx],
+		targetIdx, target, target.Proc.Reg.MergeReceivers[targetIdx])
 	target.Proc.Reg.MergeReceivers[targetIdx] = source.Proc.Reg.MergeReceivers[sourceIdx]
 	i := 0
 	for i < len(source.RemoteReceivRegInfos) {
@@ -2586,6 +2589,7 @@ func isLaunchMode(cnlist engine.Nodes) bool {
 }
 
 func isSameCN(addr string, currentCNAddr string) bool {
+	return addr == currentCNAddr
 	// just a defensive judgment. In fact, we shouldn't have received such data.
 	parts1 := strings.Split(addr, ":")
 	if len(parts1) != 2 {

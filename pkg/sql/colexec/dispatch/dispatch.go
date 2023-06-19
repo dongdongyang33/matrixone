@@ -17,6 +17,7 @@ package dispatch
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/google/uuid"
@@ -38,8 +39,9 @@ func Prepare(proc *process.Process, arg any) error {
 	ctr.localRegsCnt = len(ap.LocalRegs)
 	ctr.remoteRegsCnt = len(ap.RemoteRegs)
 	ctr.aliveRegCnt = ctr.localRegsCnt + ctr.remoteRegsCnt
-	if atomic.LoadInt32(ap.ParallelNum) > 0 {
-		ctr.isParallel = true
+	if ap.ParallelNum != nil {
+		fmt.Printf("[dispatch.prepared] proc %p with parallel prepared\n", proc)
+		ctr.isParallel = atomic.LoadInt32(ap.ParallelNum) > 0
 	}
 
 	switch ap.FuncId {
@@ -52,12 +54,16 @@ func Prepare(proc *process.Process, arg any) error {
 		} else {
 			ctr.sendFunc = sendToAllFunc
 		}
-		ap.prepareRemote(proc)
+		if err := ap.prepareRemote(proc, false); err != nil {
+			return err
+		}
 
 	case ShuffleToAllFunc:
 		ap.ctr.sendFunc = shuffleToAllFunc
 		if ap.ctr.remoteRegsCnt > 0 {
-			ap.prepareRemote(proc)
+			if err := ap.prepareRemote(proc, false); err != nil {
+				return err
+			}
 		} else {
 			ap.prepareLocal()
 		}
@@ -72,7 +78,13 @@ func Prepare(proc *process.Process, arg any) error {
 		} else {
 			ctr.sendFunc = sendToAnyFunc
 		}
-		ap.prepareRemote(proc)
+		if err := ap.prepareRemote(proc, true); err != nil {
+			return err
+		}
+
+		// Update the remote count because sendToAny allows some receiver failed
+		ctr.remoteRegsCnt = len(ap.ctr.remoteReceivers)
+		ap.ctr.aliveRegCnt = ap.ctr.remoteRegsCnt + ap.ctr.localRegsCnt
 
 	case SendToAllLocalFunc:
 		if ctr.remoteRegsCnt != 0 {
@@ -99,7 +111,7 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 	ap := arg.(*Argument)
 
 	bat := proc.InputBatch()
-	if bat == nil {
+	if bat == nil || ap.ctr.end {
 		if ap.FuncId == ShuffleToAllFunc {
 			return sendShuffledBats(ap, proc)
 		}
@@ -113,19 +125,24 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 	return ap.ctr.sendFunc(bat, ap, proc)
 }
 
-func (arg *Argument) waitRemoteRegsReady(proc *process.Process) (bool, error) {
+func (arg *Argument) waitRemoteRegsReady(proc *process.Process, isAny bool) error {
 	cnt := len(arg.RemoteRegs)
+	fmt.Printf("[dispatch.Wait] proc %p waiting ...\n", proc)
 	for cnt > 0 {
 		timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), waitNotifyTimeout)
 		defer timeoutCancel()
 		select {
 		case <-timeoutCtx.Done():
-			logutil.Errorf("waiting notify msg timeout")
-			return false, moerr.NewInternalErrorNoCtx("wait notify message timeout")
+			if !isAny {
+				fmt.Printf("[dispatch.Wait] proc %p waiting timeout\n", proc)
+				logutil.Errorf("waiting notify msg timeout")
+				return moerr.NewInternalErrorNoCtx("wait notify message timeout")
+			}
 		case <-proc.Ctx.Done():
-			arg.ctr.prepared = true
+			arg.ctr.end = true
+			fmt.Printf("[dispatch.Wait] proc %p ctx done\n", proc)
 			logutil.Warn("conctx done during dispatch")
-			return true, nil
+			break
 		case csinfo := <-proc.DispatchNotifyCh:
 			arg.ctr.remoteReceivers = append(arg.ctr.remoteReceivers, &WrapperClientSession{
 				msgId:  csinfo.MsgId,
@@ -133,15 +150,13 @@ func (arg *Argument) waitRemoteRegsReady(proc *process.Process) (bool, error) {
 				uuid:   csinfo.Uid,
 				doneCh: csinfo.DoneCh,
 			})
-			cnt--
 		}
+		cnt--
 	}
-	arg.ctr.prepared = true
-	return false, nil
+	return nil
 }
 
-func (arg *Argument) prepareRemote(proc *process.Process) {
-	arg.ctr.prepared = false
+func (arg *Argument) prepareRemote(proc *process.Process, isAny bool) error {
 	arg.ctr.isRemote = true
 	arg.ctr.remoteReceivers = make([]*WrapperClientSession, 0, arg.ctr.remoteRegsCnt)
 	arg.ctr.remoteToIdx = make(map[uuid.UUID]int)
@@ -151,9 +166,13 @@ func (arg *Argument) prepareRemote(proc *process.Process) {
 		}
 		if !arg.ctr.isParallel {
 			colexec.Srv.PutParallelNumForUuid(rr.Uuid, 1)
+		} else {
+			colexec.Srv.PutParallelNumForUuid(rr.Uuid, int(*arg.ParallelNum))
 		}
 		colexec.Srv.PutProcIntoUuidMap(rr.Uuid, proc)
 	}
+
+	return arg.waitRemoteRegsReady(proc, isAny)
 }
 
 func (arg *Argument) prepareLocal() {

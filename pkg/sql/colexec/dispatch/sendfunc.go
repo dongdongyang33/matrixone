@@ -158,25 +158,13 @@ func sendToAllLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (
 
 // common sender: send to all RemoteReceiver
 func sendToAllRemoteFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (bool, error) {
-	if !ap.ctr.prepared {
-		end, err := ap.waitRemoteRegsReady(proc)
-		if err != nil {
-			return false, err
-		}
-		if end {
-			return true, nil
-		}
+	encodeData, errEncode := types.Encode(bat)
+	if errEncode != nil {
+		return false, errEncode
 	}
-
-	{ // send to remote regs
-		encodeData, errEncode := types.Encode(bat)
-		if errEncode != nil {
-			return false, errEncode
-		}
-		for _, r := range ap.ctr.remoteReceivers {
-			if err := sendBatchToClientSession(proc.Ctx, encodeData, r); err != nil {
-				return false, err
-			}
+	for _, r := range ap.ctr.remoteReceivers {
+		if err := sendBatchToClientSession(proc.Ctx, encodeData, r); err != nil {
+			return false, err
 		}
 	}
 
@@ -442,16 +430,6 @@ func rangeShuffle(bat *batch.Batch, ap *Argument, proc *process.Process) (bool, 
 
 // shuffle to all receiver (include LocalReceiver and RemoteReceiver)
 func shuffleToAllFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (bool, error) {
-	if !ap.ctr.prepared {
-		end, err := ap.waitRemoteRegsReady(proc)
-		if err != nil {
-			return false, err
-		}
-		if end {
-			return true, nil
-		}
-	}
-
 	if ap.ShuffleType == int32(plan.ShuffleType_Hash) {
 		return hashShuffle(bat, ap, proc)
 	} else {
@@ -501,15 +479,6 @@ func sendToAnyLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (
 // if the reg which you want to send to is closed
 // send it to next one.
 func sendToAnyRemoteFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (bool, error) {
-	if !ap.ctr.prepared {
-		end, _ := ap.waitRemoteRegsReady(proc)
-		// update the cnt
-		ap.ctr.remoteRegsCnt = len(ap.ctr.remoteReceivers)
-		ap.ctr.aliveRegCnt = ap.ctr.remoteRegsCnt + ap.ctr.localRegsCnt
-		if end || ap.ctr.remoteRegsCnt == 0 {
-			return true, nil
-		}
-	}
 	select {
 	case <-proc.Ctx.Done():
 		logutil.Debugf("conctx done during dispatch")
