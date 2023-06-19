@@ -693,6 +693,7 @@ func convertToPipelineInstruction(opr *vm.Instruction, ctx *scopeContext, ctxId 
 		}
 	case *lockop.Argument:
 		in.LockOp = &pipeline.LockOp{
+			Block:   t.Block(),
 			Targets: t.CopyToPipelineTarget(),
 		}
 	case *preinsertunique.Argument:
@@ -1047,6 +1048,7 @@ func convertToVmInstruction(s *Scope, opr *pipeline.Instruction, ctx *scopeConte
 	case vm.LockOp:
 		t := opr.GetLockOp()
 		lockArg := lockop.NewArgument()
+		lockArg.SetBlock(t.Block)
 		for _, target := range t.Targets {
 			typ := plan2.MakeTypeByPlan2Type(target.GetPrimaryColTyp())
 			lockArg.AddLockTarget(target.GetTableId(), target.GetPrimaryColIdxInBat(), typ, target.GetRefreshTsIdxInBat())
