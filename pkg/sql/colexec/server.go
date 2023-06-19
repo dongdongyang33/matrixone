@@ -15,6 +15,8 @@
 package colexec
 
 import (
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/logservice"
@@ -63,10 +65,14 @@ func (srv *Server) RegistConnector(reg *process.WaitRegister) uint64 {
 func (srv *Server) PutParallelNumForUuid(u uuid.UUID, num int) error {
 	srv.uuidCsChanMap.Lock()
 	defer srv.uuidCsChanMap.Unlock()
-
-	if _, ok := srv.uuidCsChanMap.cntMp[u]; ok {
-		return moerr.NewInternalErrorNoCtx("uuid %s parallel count had been set", u)
+	if n, ok := srv.uuidCsChanMap.cntMp[u]; ok {
+		if n != num {
+			fmt.Printf("[putuuidnum] error. uuid = %s, old = %d, new = %d\n", u, n, num)
+			return moerr.NewInternalErrorNoCtx("uuid %s parallel count had been set to %d\n", u, n)
+		}
+		return nil
 	}
+	fmt.Printf("[putuuidnum] uuid %s -> num %d\n", u, num)
 	srv.uuidCsChanMap.cntMp[u] = num
 	return nil
 }
@@ -101,8 +107,11 @@ func (srv *Server) PutProcIntoUuidMap(u uuid.UUID, p *process.Process) error {
 	ps, ok := srv.uuidCsChanMap.mp[u]
 	if ok {
 		ps = append(ps, p)
+		srv.uuidCsChanMap.mp[u] = ps
+		fmt.Printf("[putuuid] put uuid %s with proc %p success, current len = %d\n", u, p, len(ps))
 	} else {
 		srv.uuidCsChanMap.mp[u] = []*process.Process{p}
+		fmt.Printf("[putuuid] (first) put uuid %s with proc %p success, current len = %d\n", u, p, len(srv.uuidCsChanMap.mp[u]))
 	}
 	return nil
 }
@@ -110,8 +119,9 @@ func (srv *Server) PutProcIntoUuidMap(u uuid.UUID, p *process.Process) error {
 func (srv *Server) CleanUuidFromMap(u uuid.UUID) error {
 	srv.uuidCsChanMap.Lock()
 	defer srv.uuidCsChanMap.Unlock()
+	fmt.Printf("[cleanuuid] clean uuid %s\n", u)
 	delete(srv.uuidCsChanMap.cntMp, u)
-	delete(srv.uuidCsChanMap.cntMp, u)
+	delete(srv.uuidCsChanMap.mp, u)
 	return nil
 }
 

@@ -16,6 +16,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"sync"
 
@@ -102,6 +103,7 @@ func (s *Scope) SetContextRecursively(ctx context.Context) {
 
 // MergeRun range and run the scope's pre-scopes by go-routine, and finally run itself to do merge work.
 func (s *Scope) MergeRun(c *Compile) error {
+	fmt.Printf("[mergerun(%t)] proc %p %s\n", s.Magic == EmptyMerge, s.Proc, DebugShowScopes([]*Scope{s}))
 	errChan := make(chan error, len(s.PreScopes))
 	var wg sync.WaitGroup
 	for _, scope := range s.PreScopes {
@@ -109,7 +111,11 @@ func (s *Scope) MergeRun(c *Compile) error {
 		switch scope.Magic {
 		case Normal:
 			go func(cs *Scope) {
-				errChan <- cs.Run(c)
+				eee := cs.Run(c)
+				if eee != nil {
+					fmt.Printf("[mergerun] from Normal proc %p %s run failed\n", cs.Proc, DebugShowScopes([]*Scope{cs}))
+				}
+				errChan <- eee
 				wg.Done()
 			}(scope)
 		case Merge, MergeInsert, EmptyMerge:
@@ -139,21 +145,24 @@ func (s *Scope) MergeRun(c *Compile) error {
 	s.Proc.Ctx = context.WithValue(s.Proc.Ctx, defines.EngineKey{}, c.e)
 
 	// EmptyMerge is a specail type which produced by TotallyParallel
-	// it has no instruction so it need to collect all status of its
-	// prescope
+	// It has no instruction so it just need to collect all status of
+	// its prescope
 	if s.Magic == EmptyMerge {
 		prelen := len(s.PreScopes)
 		for {
 			select {
 			case <-s.Proc.Ctx.Done():
+				fmt.Printf("[emptyMerge] proc %p close by ctx done\n", s.Proc)
 				return nil
 			case err := <-errChan:
 				if err != nil {
+					fmt.Printf("[emptyMerge] proc %p close by err: %s\n", s.Proc, err)
 					s.Proc.Cancel()
 					return err
 				}
 				prelen--
 				if prelen == 0 {
+					fmt.Printf("[emptyMerge] proc %p close normally\n", s.Proc)
 					s.Proc.Cancel()
 					return nil
 				}
@@ -234,6 +243,9 @@ func (s *Scope) ParallelRun(c *Compile, remote bool) error {
 
 	s.Proc.Ctx = context.WithValue(s.Proc.Ctx, defines.EngineKey{}, c.e)
 	if s.IsJoin {
+		if s.IsTotallyParallel {
+			fmt.Printf("[parallelrun] totally parallel. %s\n", DebugShowScopes([]*Scope{s}))
+		}
 		return s.JoinRun(c)
 	}
 	if s.IsLoad {
@@ -429,6 +441,7 @@ func (s *Scope) JoinRun(c *Compile) error {
 		ss[i].Proc.Reg.MergeReceivers[1].Ch = make(chan *batch.Batch, 10)
 	}
 	probe_scope, build_scope := c.newJoinProbeScope(s, ss), c.newJoinBuildScope(s, ss)
+	s.IsTotallyParallel = false
 	s = newParallelScope(s, ss)
 
 	if isRight {
@@ -458,10 +471,25 @@ func (s *Scope) JoinRun(c *Compile) error {
 			}
 		}
 	}
+	if s.IsTotallyParallel {
+		fmt.Printf("[totallyParallelJoin] proc %p (before) %s\n", s.Proc, DebugShowScopes([]*Scope{s}))
+	}
 	s.PreScopes = append(s.PreScopes, chp...)
+	if s.IsTotallyParallel {
+		fmt.Printf("[totallyParallelJoin] proc %p (appendCh) %s\n", s.Proc, DebugShowScopes([]*Scope{s}))
+	}
 	s.PreScopes = append(s.PreScopes, probe_scope)
+	if s.IsTotallyParallel {
+		fmt.Printf("[totallyParallelJoin] proc %p (appendProbe) %s\n", s.Proc, DebugShowScopes([]*Scope{s}))
+	}
 	s.PreScopes = append(s.PreScopes, build_scope)
+	if s.IsTotallyParallel {
+		fmt.Printf("[totallyParallelJoin] proc %p (appendBuild) %s\n", s.Proc, DebugShowScopes([]*Scope{s}))
+	}
 
+	if s.IsTotallyParallel {
+		fmt.Printf("[totallyParallelJoin] proc %p (final) %s\n", s.Proc, DebugShowScopes([]*Scope{s}))
+	}
 	return s.MergeRun(c)
 }
 
@@ -622,6 +650,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 			lastIns := s.Instructions[len(s.Instructions)-1]
 			dupNum := int32(len(ss))
 			for i := range ss {
+				ss[i].Instructions = ss[i].Instructions[:len(ss[i].Instructions)-1]
 				if !ss[i].appendInstruction(DupLastInstruction(&dupNum, lastIns)) {
 					panic("cannot append last instruction when totally parallel")
 				}
@@ -630,6 +659,9 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 			s.Instructions = s.Instructions[:0]
 			s.Magic = EmptyMerge
 			s.PreScopes = ss
+			s.Proc.Reg.MergeReceivers = s.Proc.Reg.MergeReceivers[:0]
+
+			fmt.Printf("[totallyparallel] %s\n", DebugShowScopes([]*Scope{s}))
 			return s
 		}
 
@@ -722,7 +754,7 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) {
 			if reg != nil {
 				ch = reg.Ch
 			}
-			if err := receiveMsgAndForward(s.Proc, messagesReceive, ch); err != nil {
+			if err := receiveMsgAndForward(s, messagesReceive, ch); err != nil {
 				errChan <- err
 				return
 			}
@@ -732,7 +764,8 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) {
 	}
 }
 
-func receiveMsgAndForward(proc *process.Process, receiveCh chan morpc.Message, forwardCh chan *batch.Batch) error {
+func receiveMsgAndForward(s *Scope, receiveCh chan morpc.Message, forwardCh chan *batch.Batch) error {
+	proc := s.Proc
 	var val morpc.Message
 	var dataBuffer []byte
 	var ok bool
@@ -744,6 +777,7 @@ func receiveMsgAndForward(proc *process.Process, receiveCh chan morpc.Message, f
 			return nil
 		case val, ok = <-receiveCh:
 			if val == nil || !ok {
+				fmt.Printf("[receiveMsgAndForward] val?nil = %t, ok = %t\n", val == nil, ok)
 				return moerr.NewStreamClosedNoCtx()
 			}
 		}

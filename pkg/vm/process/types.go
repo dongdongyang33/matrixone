@@ -201,7 +201,7 @@ type WrapCs struct {
 	MsgId  uint64
 	Uid    uuid.UUID
 	Cs     morpc.ClientSession
-	DoneCh chan struct{}
+	DoneCh chan bool
 }
 
 func (proc *Process) InitSeq() {

@@ -16,6 +16,7 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"sync/atomic"
 
@@ -229,6 +230,7 @@ func sendShuffledBats(ap *Argument, proc *process.Process) (bool, error) {
 				return false, errEncode
 			}
 			if err := sendBatchToClientSession(proc.Ctx, encodeData, r); err != nil {
+				fmt.Printf("[dispatch.shuffle] proc %p send to remote failed. err: %s\n", proc, err)
 				return false, err
 			}
 		}

@@ -17,6 +17,7 @@ package dispatch
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/google/uuid"
@@ -38,8 +39,9 @@ func Prepare(proc *process.Process, arg any) error {
 	ctr.localRegsCnt = len(ap.LocalRegs)
 	ctr.remoteRegsCnt = len(ap.RemoteRegs)
 	ctr.aliveRegCnt = ctr.localRegsCnt + ctr.remoteRegsCnt
-	if atomic.LoadInt32(ap.ParallelNum) > 0 {
-		ctr.isParallel = true
+	if ap.ParallelNum != nil {
+		fmt.Printf("[dispatch.prepared] proc %p with parallel prepared\n", proc)
+		ctr.isParallel = atomic.LoadInt32(ap.ParallelNum) > 0
 	}
 
 	switch ap.FuncId {
@@ -151,7 +153,10 @@ func (arg *Argument) prepareRemote(proc *process.Process) {
 		}
 		if !arg.ctr.isParallel {
 			colexec.Srv.PutParallelNumForUuid(rr.Uuid, 1)
+		} else {
+			colexec.Srv.PutParallelNumForUuid(rr.Uuid, int(*arg.ParallelNum))
 		}
+
 		colexec.Srv.PutProcIntoUuidMap(rr.Uuid, proc)
 	}
 }

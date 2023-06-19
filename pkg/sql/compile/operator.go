@@ -1663,15 +1663,26 @@ func constructConnector(s *Scope, idx int) *connector.Argument {
 }
 
 func DupLastInstruction(dupNum *int32, ins vm.Instruction) vm.Instruction {
+	fmt.Printf("[DupLastInstruction] op = %d\n", ins.Op)
 	dup := vm.Instruction{Op: ins.Op, Idx: ins.Idx, IsFirst: ins.IsFirst, IsLast: ins.IsLast}
 	switch ins.Op {
 	case vm.Dispatch:
 		t := ins.Arg.(*dispatch.Argument)
 		arg := &dispatch.Argument{
-			IsSink:      t.IsSink,
-			FuncId:      t.FuncId,
-			LocalRegs:   make([]*process.WaitRegister, len(t.LocalRegs)),
-			RemoteRegs:  make([]colexec.ReceiveInfo, len(t.RemoteRegs)),
+			IsSink: t.IsSink,
+			FuncId: t.FuncId,
+
+			LocalRegs:  make([]*process.WaitRegister, len(t.LocalRegs)),
+			RemoteRegs: make([]colexec.ReceiveInfo, len(t.RemoteRegs)),
+
+			ShuffleColIdx: t.ShuffleColIdx,
+			ShuffleType:   t.ShuffleType,
+			ShuffleColMax: t.ShuffleColMax,
+			ShuffleColMin: t.ShuffleColMin,
+
+			ShuffleRegIdxLocal:  make([]int, len(t.ShuffleRegIdxLocal)),
+			ShuffleRegIdxRemote: make([]int, len(t.ShuffleRegIdxRemote)),
+
 			ParallelNum: dupNum,
 		}
 
@@ -1682,6 +1693,15 @@ func DupLastInstruction(dupNum *int32, ins vm.Instruction) vm.Instruction {
 		for i := range arg.RemoteRegs {
 			arg.RemoteRegs[i] = t.RemoteRegs[i]
 		}
+
+		for i := range arg.ShuffleRegIdxLocal {
+			arg.ShuffleRegIdxLocal[i] = t.ShuffleRegIdxLocal[i]
+		}
+
+		for i := range arg.ShuffleRegIdxRemote {
+			arg.ShuffleRegIdxRemote[i] = t.ShuffleRegIdxRemote[i]
+		}
+
 		dup.Arg = arg
 	default:
 		panic(fmt.Sprintf("unexpected last instruction type '%d' when dup last", ins.Op))

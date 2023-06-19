@@ -124,11 +124,14 @@ func cnMessageHandle(receiver *messageReceiverOnServer) error {
 	switch receiver.messageTyp {
 	case pipeline.PrepareDoneNotifyMessage: // notify the dispatch executor
 		parallelNum, err := receiver.GetParallelNumByUuid(receiver.messageUuid)
+		fmt.Printf("[msgHandler] parallel num = %d\n", parallelNum)
 		if parallelNum == 0 || err != nil {
 			return err
 		}
 
-		doneCh := make(chan struct{})
+		doneCh := make(chan bool, parallelNum)
+		successCnt := 0
+		var retErr error
 		for i := 0; i < parallelNum; i++ {
 			opProc, err := receiver.GetProcByUuidAndIndx(receiver.messageUuid, i)
 			if err != nil || opProc == nil {
@@ -145,16 +148,29 @@ func cnMessageHandle(receiver *messageReceiverOnServer) error {
 
 			select {
 			case <-putCtx.Done():
-				return moerr.NewInternalError(receiver.ctx, "send notify msg to dispatch operator timeout")
+				fmt.Printf("[msghandler] put info into uuid %s proc %p timeout\n", receiver.messageUuid, opProc)
+				retErr = moerr.NewInternalError(receiver.ctx, "send notify msg to dispatch operator timeout")
+				break
 			case <-receiver.ctx.Done():
 				logutil.Errorf("receiver conctx done during send notify to dispatch operator")
+				break
 			case <-opProc.Ctx.Done():
 				logutil.Errorf("dispatch operator context done")
 			case opProc.DispatchNotifyCh <- info:
+				successCnt++
 			}
 		}
-		<-doneCh
-		return nil
+
+		hasErr := false
+		for i := 0; i < successCnt; i++ {
+			hasErr = (hasErr || (<-doneCh))
+		}
+		if hasErr && retErr == nil {
+			retErr = moerr.NewInternalErrorNoCtx("pipeline failed")
+		}
+
+		colexec.Srv.CleanUuidFromMap(receiver.messageUuid)
+		return retErr
 
 	case pipeline.PipelineMessage:
 		c := receiver.newCompile()
@@ -622,7 +638,7 @@ func fillInstructionsForScope(s *Scope, ctx *scopeContext, p *pipeline.Pipeline)
 	}
 	s.Instructions = make([]vm.Instruction, len(p.InstructionList))
 	for i := range s.Instructions {
-		if s.Instructions[i], err = convertToVmInstruction(p.InstructionList[i], ctx); err != nil {
+		if s.Instructions[i], err = convertToVmInstruction(s, p.InstructionList[i], ctx); err != nil {
 			return err
 		}
 	}
@@ -985,7 +1001,7 @@ func convertToPipelineInstruction(opr *vm.Instruction, ctx *scopeContext, ctxId 
 }
 
 // convert pipeline.Instruction to vm.Instruction
-func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext) (vm.Instruction, error) {
+func convertToVmInstruction(s *Scope, opr *pipeline.Instruction, ctx *scopeContext) (vm.Instruction, error) {
 	v := vm.Instruction{Op: vm.OpType(opr.Op), Idx: int(opr.Idx), IsFirst: opr.IsFirst, IsLast: opr.IsLast}
 	switch v.Op {
 	case vm.Deletion:
@@ -1106,6 +1122,9 @@ func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext) (vm.In
 			ShuffleRegIdxLocal:  shuffleRegIdxLocal,
 			ShuffleRegIdxRemote: shuffleRegIdxRemote,
 		}
+
+		s.IsTotallyParallel = (t.FuncId == dispatch.ShuffleToAllFunc)
+
 	case vm.Group:
 		t := opr.GetAgg()
 		v.Arg = &group.Argument{

@@ -15,17 +15,14 @@
 package dispatch
 
 import (
-	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/matrixorigin/matrixone/pkg/cnservice/cnclient"
-	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/morpc"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
-	"github.com/matrixorigin/matrixone/pkg/pb/pipeline"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
@@ -33,7 +30,7 @@ import (
 const (
 	maxMessageSizeToMoRpc = 64 * mpool.MB
 	procTimeout           = 10000 * time.Second
-	waitNotifyTimeout     = 45 * time.Second
+	waitNotifyTimeout     = 40 * time.Second
 	shuffleBatchSize      = 1024 * 8 //8k
 
 	// send to all reg functions
@@ -55,7 +52,7 @@ type WrapperClientSession struct {
 	cs    morpc.ClientSession
 	uuid  uuid.UUID
 	// toAddr string
-	doneCh chan struct{}
+	doneCh chan bool
 }
 type container struct {
 	// the clientsession info for the channel you want to dispatch
@@ -67,6 +64,7 @@ type container struct {
 	isRemote bool
 	// prepared specify waiting remote receiver ready or not
 	prepared bool
+	end      bool
 
 	// isParallel specify it is parallel or not
 	// if yes, close with the parallel-close way
@@ -109,35 +107,43 @@ type Argument struct {
 }
 
 func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
-	if arg.ctr.isParallel {
-		if atomic.AddInt32(arg.ParallelNum, -1) > 0 {
-			return
-		}
+	for _, r := range arg.ctr.remoteReceivers {
+		r.doneCh <- pipelineFailed
 	}
 
-	if arg.ctr.isRemote {
-		if !arg.ctr.prepared {
-			arg.waitRemoteRegsReady(proc)
+	if arg.ctr.isParallel {
+		if atomic.AddInt32(arg.ParallelNum, -1) > 0 {
+			fmt.Printf("[dispatch.Free] (%t) proc %p free parallel type (not the last one)\n", pipelineFailed, proc)
+			return
 		}
-		for _, r := range arg.ctr.remoteReceivers {
-			timeoutCtx, cancel := context.WithTimeout(context.Background(), procTimeout)
-			_ = cancel
-			message := cnclient.AcquireMessage()
-			{
-				message.Id = r.msgId
-				message.Cmd = pipeline.BatchMessage
-				message.Sid = pipeline.MessageEnd
-				message.Uuid = r.uuid[:]
-			}
-			if pipelineFailed {
-				err := moerr.NewInternalError(proc.Ctx, "pipeline failed")
-				message.Err = pipeline.EncodedMessageError(timeoutCtx, err)
-			}
-			r.cs.Write(timeoutCtx, message)
-			colexec.Srv.CleanUuidFromMap(r.uuid)
-			close(r.doneCh)
-		}
+		fmt.Printf("[dispatch.Free] (%t) proc %p free parallel type (last one)\n", pipelineFailed, proc)
 	}
+
+	/*
+		if arg.ctr.isRemote {
+			if !arg.ctr.prepared {
+				arg.waitRemoteRegsReady(proc)
+			}
+			for _, r := range arg.ctr.remoteReceivers {
+				timeoutCtx, cancel := context.WithTimeout(context.Background(), procTimeout)
+				_ = cancel
+				message := cnclient.AcquireMessage()
+				{
+					message.Id = r.msgId
+					message.Cmd = pipeline.BatchMessage
+					message.Sid = pipeline.MessageEnd
+					message.Uuid = r.uuid[:]
+				}
+				if pipelineFailed {
+					err := moerr.NewInternalError(proc.Ctx, "pipeline failed")
+					message.Err = pipeline.EncodedMessageError(timeoutCtx, err)
+				}
+				r.cs.Write(timeoutCtx, message)
+				//colexec.Srv.CleanUuidFromMap(r.uuid)
+				close(r.doneCh)
+			}
+		}
+	*/
 
 	for i := range arg.LocalRegs {
 		if !pipelineFailed {

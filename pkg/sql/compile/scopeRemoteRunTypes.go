@@ -16,6 +16,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"runtime"
 	"time"
@@ -43,7 +44,8 @@ import (
 const (
 	maxMessageSizeToMoRpc = 64 * mpool.MB
 
-	HandleNotifyTimeout = 120 * time.Second
+	HandleNotifyTimeout   = 30 * time.Second
+	SendEndMessageTimeout = 10000 * time.Second
 )
 
 // cnInformation records service information to help handle messages.
@@ -275,7 +277,7 @@ func (receiver *messageReceiverOnServer) newCompile() *Compile {
 			NodeId: pHelper.analysisNodeList[i],
 		}
 	}
-	proc.DispatchNotifyCh = make(chan process.WrapCs, 1)
+	proc.DispatchNotifyCh = make(chan process.WrapCs)
 
 	c := &Compile{
 		proc: proc,
@@ -300,6 +302,8 @@ func (receiver *messageReceiverOnServer) sendError(
 	}
 	message.SetID(receiver.messageId)
 	message.SetSid(pipeline.MessageEnd)
+	message.Uuid = receiver.messageUuid[:]
+
 	if errInfo != nil {
 		message.SetMoError(receiver.ctx, errInfo)
 	}
@@ -367,6 +371,7 @@ func (receiver *messageReceiverOnServer) sendEndMessage() error {
 	message.SetSid(pipeline.MessageEnd)
 	message.SetID(receiver.messageId)
 	message.SetMessageType(receiver.messageTyp)
+	message.Uuid = receiver.messageUuid[:]
 
 	analysisInfo := receiver.finalAnalysisInfo
 	if len(analysisInfo) > 0 {
@@ -430,6 +435,7 @@ outter:
 			if opProc, ok = colexec.Srv.GetProcByUuid(opUuid, idx); !ok {
 				runtime.Gosched()
 			} else {
+				fmt.Printf("[msgHandler] get uuid %s idx %d success!\n", uid, idx)
 				break outter
 			}
 		}
@@ -446,7 +452,7 @@ outter:
 	for {
 		select {
 		case <-getCtx.Done():
-			return 0, moerr.NewInternalError(receiver.ctx, "get dispatch process by uuid timeout")
+			return 0, moerr.NewInternalError(receiver.ctx, "get dispatch num by uuid timeout")
 		case <-receiver.ctx.Done():
 			logutil.Errorf("receiver conctx done during get dispatch process")
 			return 0, nil
