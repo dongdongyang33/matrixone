@@ -47,7 +47,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/connector"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/deletion"
-	"github.com/matrixorigin/matrixone/pkg/sql/colexec/dispatch"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/external"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/merge"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/mergeblock"
@@ -68,6 +67,8 @@ import (
 const (
 	DistributedThreshold   uint64 = 10 * mpool.MB
 	SingleLineSizeEstimate uint64 = 300 * mpool.B
+
+	MaxChannelBuffer = 16
 )
 
 var (
@@ -1202,12 +1203,12 @@ func (c *Compile) compileExternScanParallel(n *plan.Node, param *tree.ExternPara
 		IsFirst: c.anal.isFirst,
 		Arg:     extern,
 	})
-	_, arg := constructDispatchLocalAndRemote(0, ss, c.addr)
-	arg.FuncId = dispatch.SendToAnyLocalFunc
+
 	scope.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
-		Arg: arg,
+		Arg: constructDispatchLocal(true, false, extraRegisters(ss, 0)),
 	})
+
 	ss[0].PreScopes = append(ss[0].PreScopes, scope)
 	c.anal.isFirst = false
 	return ss, nil
@@ -1427,7 +1428,7 @@ func (c *Compile) compileUnion(n *plan.Node, ss []*Scope, children []*Scope) []*
 	mergeChildren := c.newMergeScope(ss)
 	mergeChildren.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
-		Arg: constructBroadcastDispatch(0, rs, c.addr, n),
+		Arg: constructBroadcastDispatch(0, mergeChildren, rs, c.addr, n),
 	})
 	rs[idx].PreScopes = append(rs[idx].PreScopes, mergeChildren)
 	return rs
@@ -1851,7 +1852,7 @@ func (c *Compile) compileBucketGroup(n *plan.Node, ss []*Scope, ns []*plan.Node)
 		if !ss[i].IsEnd {
 			ss[i].appendInstruction(vm.Instruction{
 				Op:  vm.Dispatch,
-				Arg: constructBroadcastDispatch(j, children, ss[i].NodeInfo.Addr, n),
+				Arg: constructBroadcastDispatch(j, ss[i], children, ss[i].NodeInfo.Addr, n),
 			})
 			j++
 			ss[i].IsEnd = true
@@ -2100,7 +2101,7 @@ func (c *Compile) newJoinScopeListWithBucket(rs, ss, children []*Scope, n *plan.
 	leftMerge := c.newMergeScope(ss)
 	leftMerge.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
-		Arg: constructBroadcastDispatch(0, rs, c.addr, n),
+		Arg: constructBroadcastDispatch(0, leftMerge, rs, c.addr, n),
 	})
 	leftMerge.IsEnd = true
 
@@ -2109,7 +2110,7 @@ func (c *Compile) newJoinScopeListWithBucket(rs, ss, children []*Scope, n *plan.
 	rightMerge := c.newMergeScope(children)
 	rightMerge.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
-		Arg: constructBroadcastDispatch(1, rs, c.addr, n),
+		Arg: constructBroadcastDispatch(1, rightMerge, rs, c.addr, n),
 	})
 	rightMerge.IsEnd = true
 
@@ -2190,7 +2191,7 @@ func (c *Compile) newBroadcastJoinScopeList(ss []*Scope, children []*Scope, n *p
 	mergeChildren := c.newMergeScope(children)
 	mergeChildren.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,
-		Arg: constructBroadcastDispatch(1, rs, c.addr, n),
+		Arg: constructBroadcastDispatch(1, mergeChildren, rs, c.addr, n),
 	})
 	mergeChildren.IsEnd = true
 	rs[idx].PreScopes = append(rs[idx].PreScopes, mergeChildren)
@@ -2638,6 +2639,7 @@ func isLaunchMode(cnlist engine.Nodes) bool {
 }
 
 func isSameCN(addr string, currentCNAddr string) bool {
+	return addr == currentCNAddr
 	// just a defensive judgment. In fact, we shouldn't have received such data.
 	parts1 := strings.Split(addr, ":")
 	if len(parts1) != 2 {

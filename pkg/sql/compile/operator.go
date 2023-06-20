@@ -1098,9 +1098,10 @@ func constructDispatchLocalAndRemote(idx int, ss []*Scope, currentCNAddr string)
 			})
 			arg.ShuffleRegIdxRemote = append(arg.ShuffleRegIdxRemote, i)
 			s.RemoteReceivRegInfos = append(s.RemoteReceivRegInfos, RemoteReceivRegInfo{
-				Idx:      idx,
-				Uuid:     newUuid,
-				FromAddr: currentCNAddr,
+				Idx:       idx,
+				Uuid:      newUuid,
+				FromAddr:  currentCNAddr,
+				SenderCnt: 1,
 			})
 		}
 	}
@@ -1109,7 +1110,7 @@ func constructDispatchLocalAndRemote(idx int, ss []*Scope, currentCNAddr string)
 
 // ShuffleJoinDispatch is a cross-cn dispath
 // and it will send same batch to all register
-func constructBroadcastDispatch(idx int, ss []*Scope, currentCNAddr string, node *plan.Node) *dispatch.Argument {
+func constructBroadcastDispatch(idx int, locate *Scope, ss []*Scope, currentCNAddr string, node *plan.Node) *dispatch.Argument {
 	hasRemote, arg := constructDispatchLocalAndRemote(idx, ss, currentCNAddr)
 	if node.Stats.Shuffle {
 		arg.FuncId = dispatch.ShuffleToAllFunc
@@ -1117,6 +1118,12 @@ func constructBroadcastDispatch(idx int, ss []*Scope, currentCNAddr string, node
 		arg.ShuffleType = int32(node.Stats.ShuffleType)
 		arg.ShuffleColMin = node.Stats.ShuffleColMin
 		arg.ShuffleColMax = node.Stats.ShuffleColMax
+
+		if locate.Magic == Remote && locate.NodeInfo.Mcpu > 1 {
+			parallel := GetMin(locate.NodeInfo.Mcpu, MaxChannelBuffer)
+			UpdateShuffleReceiver(parallel, arg)
+		}
+
 		return arg
 	}
 	if hasRemote {
@@ -1125,6 +1132,14 @@ func constructBroadcastDispatch(idx int, ss []*Scope, currentCNAddr string, node
 		arg.FuncId = dispatch.SendToAllLocalFunc
 	}
 	return arg
+}
+
+func UpdateShuffleReceiver(parallel int, arg *dispatch.Argument) {
+	if parallel > 1 {
+		for _, rr := range arg.LocalRegs {
+			rr.Ch = make(chan *batch.Batch, parallel)
+		}
+	}
 }
 
 func constructMergeGroup(needEval bool) *mergegroup.Argument {
@@ -1650,4 +1665,11 @@ func getRel(ctx context.Context, proc *process.Process, eg engine.Engine, ref *p
 		}
 	}
 	return relation, uniqueIndexTables, err
+}
+
+func GetMin(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

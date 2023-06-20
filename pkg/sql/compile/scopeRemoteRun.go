@@ -618,7 +618,7 @@ func fillInstructionsForScope(s *Scope, ctx *scopeContext, p *pipeline.Pipeline)
 	}
 	s.Instructions = make([]vm.Instruction, len(p.InstructionList))
 	for i := range s.Instructions {
-		if s.Instructions[i], err = convertToVmInstruction(p.InstructionList[i], ctx); err != nil {
+		if s.Instructions[i], err = convertToVmInstruction(s, p.InstructionList[i], ctx); err != nil {
 			return err
 		}
 	}
@@ -982,7 +982,7 @@ func convertToPipelineInstruction(opr *vm.Instruction, ctx *scopeContext, ctxId 
 }
 
 // convert pipeline.Instruction to vm.Instruction
-func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext) (vm.Instruction, error) {
+func convertToVmInstruction(s *Scope, opr *pipeline.Instruction, ctx *scopeContext) (vm.Instruction, error) {
 	v := vm.Instruction{Op: vm.OpType(opr.Op), Idx: int(opr.Idx), IsFirst: opr.IsFirst, IsLast: opr.IsLast}
 	switch v.Op {
 	case vm.Deletion:
@@ -1092,7 +1092,7 @@ func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext) (vm.In
 			shuffleRegIdxRemote[i] = int(t.ShuffleRegIdxRemote[i])
 		}
 
-		v.Arg = &dispatch.Argument{
+		arg := &dispatch.Argument{
 			IsSink:              t.IsSink,
 			FuncId:              int(t.FuncId),
 			LocalRegs:           regs,
@@ -1104,6 +1104,16 @@ func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext) (vm.In
 			ShuffleRegIdxLocal:  shuffleRegIdxLocal,
 			ShuffleRegIdxRemote: shuffleRegIdxRemote,
 		}
+
+		if t.FuncId == dispatch.ShuffleToAllFunc {
+			if s.Magic == Remote && s.NodeInfo.Mcpu > 1 {
+				para := GetMin(s.NodeInfo.Mcpu, MaxChannelBuffer)
+				UpdateShuffleReceiver(para, arg)
+			}
+		}
+
+		v.Arg = arg
+
 	case vm.Group:
 		t := opr.GetAgg()
 		v.Arg = &group.Argument{

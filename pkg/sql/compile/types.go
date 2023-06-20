@@ -211,7 +211,8 @@ type Compile struct {
 }
 
 type RemoteReceivRegInfo struct {
-	Idx      int
-	Uuid     uuid.UUID
-	FromAddr string
+	Idx       int
+	Uuid      uuid.UUID
+	FromAddr  string
+	SenderCnt int
 }
