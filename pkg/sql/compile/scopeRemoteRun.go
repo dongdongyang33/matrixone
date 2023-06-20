@@ -498,9 +498,10 @@ func convertPipelineUuid(p *pipeline.Pipeline, s *Scope) error {
 			return moerr.NewInternalErrorNoCtx("decode uuid failed: %s\n", err)
 		}
 		s.RemoteReceivRegInfos[i] = RemoteReceivRegInfo{
-			Idx:      int(op.GetIdx()),
-			Uuid:     uid,
-			FromAddr: op.FromAddr,
+			Idx:       int(op.GetIdx()),
+			Uuid:      uid,
+			FromAddr:  op.FromAddr,
+			SenderCnt: int(op.SenderCnt),
 		}
 	}
 	return nil
@@ -512,9 +513,10 @@ func convertScopeRemoteReceivInfo(s *Scope) (ret []*pipeline.UuidToRegIdx) {
 		op := &s.RemoteReceivRegInfos[i]
 		uid, _ := op.Uuid.MarshalBinary()
 		ret[i] = &pipeline.UuidToRegIdx{
-			Idx:      int32(op.Idx),
-			Uuid:     uid,
-			FromAddr: op.FromAddr,
+			Idx:       int32(op.Idx),
+			Uuid:      uid,
+			FromAddr:  op.FromAddr,
+			SenderCnt: int32(op.SenderCnt),
 		}
 	}
 

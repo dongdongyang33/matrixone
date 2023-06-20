@@ -139,6 +139,7 @@ func (s *Scope) MergeRun(c *Compile) error {
 	s.Proc.Ctx = context.WithValue(s.Proc.Ctx, defines.EngineKey{}, c.e)
 	var errReceiveChan chan error
 	if len(s.RemoteReceivRegInfos) > 0 {
+		s.updateReceiveChannelBuffer()
 		errReceiveChan = make(chan error, len(s.RemoteReceivRegInfos))
 		s.notifyAndReceiveFromRemote(errReceiveChan)
 	}
@@ -841,6 +842,19 @@ func receiveMsgAndForward(proc *process.Process, receiveCh chan morpc.Message, f
 				forwardCh <- bat
 			}
 			dataBuffer = nil
+		}
+	}
+}
+
+func (s *Scope) updateReceiveChannelBuffer() {
+	cnts := make([]int, len(s.Proc.Reg.MergeReceivers))
+	for _, info := range s.RemoteReceivRegInfos {
+		cnts[info.Idx] += info.SenderCnt
+	}
+
+	for i, cnt := range cnts {
+		if cnt > cap(s.Proc.Reg.MergeReceivers[i].Ch) {
+			s.Proc.Reg.MergeReceivers[i].Ch = make(chan *batch.Batch, cnt)
 		}
 	}
 }

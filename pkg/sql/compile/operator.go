@@ -1068,7 +1068,7 @@ func constructDeleteDispatchAndLocal(
 
 // This function do not setting funcId.
 // PLEASE SETTING FuncId AFTER YOU CALL IT.
-func constructDispatchLocalAndRemote(idx int, ss []*Scope, currentCNAddr string) (bool, *dispatch.Argument) {
+func constructDispatchLocalAndRemote(idx int, senderCnt int, ss []*Scope, currentCNAddr string) (bool, *dispatch.Argument) {
 	arg := new(dispatch.Argument)
 	scopeLen := len(ss)
 	arg.LocalRegs = make([]*process.WaitRegister, 0, scopeLen)
@@ -1101,7 +1101,7 @@ func constructDispatchLocalAndRemote(idx int, ss []*Scope, currentCNAddr string)
 				Idx:       idx,
 				Uuid:      newUuid,
 				FromAddr:  currentCNAddr,
-				SenderCnt: 1,
+				SenderCnt: senderCnt,
 			})
 		}
 	}
@@ -1111,7 +1111,11 @@ func constructDispatchLocalAndRemote(idx int, ss []*Scope, currentCNAddr string)
 // ShuffleJoinDispatch is a cross-cn dispath
 // and it will send same batch to all register
 func constructBroadcastDispatch(idx int, locate *Scope, ss []*Scope, currentCNAddr string, node *plan.Node) *dispatch.Argument {
-	hasRemote, arg := constructDispatchLocalAndRemote(idx, ss, currentCNAddr)
+	parallel := 1
+	if locate.Magic == Remote && locate.NodeInfo.Mcpu > 1 {
+		parallel = GetMin(locate.NodeInfo.Mcpu, MaxChannelBuffer)
+	}
+	hasRemote, arg := constructDispatchLocalAndRemote(idx, parallel, ss, currentCNAddr)
 	if node.Stats.Shuffle {
 		arg.FuncId = dispatch.ShuffleToAllFunc
 		arg.ShuffleColIdx = plan2.GetHashColumn(node.GroupBy[node.Stats.ShuffleColIdx]).ColPos
@@ -1119,10 +1123,7 @@ func constructBroadcastDispatch(idx int, locate *Scope, ss []*Scope, currentCNAd
 		arg.ShuffleColMin = node.Stats.ShuffleColMin
 		arg.ShuffleColMax = node.Stats.ShuffleColMax
 
-		if locate.Magic == Remote && locate.NodeInfo.Mcpu > 1 {
-			parallel := GetMin(locate.NodeInfo.Mcpu, MaxChannelBuffer)
-			UpdateShuffleReceiver(parallel, arg)
-		}
+		UpdateShuffleReceiver(parallel, arg)
 
 		return arg
 	}

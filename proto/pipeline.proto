@@ -435,6 +435,7 @@ message UuidToRegIdx {
   int32 idx = 1;
   bytes uuid = 2;
   string from_addr = 3;
+  int32 sender_cnt = 4;
 }
 
 message RuntimeFilter {
