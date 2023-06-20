@@ -382,6 +382,24 @@ func (e *Engine) New(ctx context.Context, op client.TxnOperator) error {
 	return nil
 }
 
+func (txn *Transaction) Commit(ctx context.Context) error {
+	txn.IncrStatemenetID(ctx)
+	if txn.readOnly.Load() {
+		return nil
+	}
+	txn.mergeTxnWorkspace()
+	err := txn.DumpBatch(true, 0)
+	if err != nil {
+		return err
+	}
+	reqs, err := genWriteReqs(ctx, txn.writes)
+	if err != nil {
+		return err
+	}
+	_, err = txn.op.Write(ctx, reqs)
+	return err
+}
+
 func (e *Engine) Commit(ctx context.Context, op client.TxnOperator) error {
 	logDebugf(op.Txn(), "Engine.Commit")
 	txn := e.getTransaction(op)
@@ -404,6 +422,11 @@ func (e *Engine) Commit(ctx context.Context, op client.TxnOperator) error {
 	}
 	_, err = op.Write(ctx, reqs)
 	return err
+}
+
+func (txn *Transaction) Rollback(ctx context.Context) error {
+	txn.engine.delTransaction(txn)
+	return nil
 }
 
 func (e *Engine) Rollback(ctx context.Context, op client.TxnOperator) error {

@@ -278,17 +278,19 @@ func (th *TxnHandler) CommitTxn() error {
 	defer func() {
 		logDebugf(sessionInfo, "CommitTxn exit txnId:%s", txnId)
 	}()
-	if err = storage.Commit(ctx2, txnOp); err != nil {
-		logErrorf(sessionInfo, "CommitTxn: storage commit failed. txnId:%s error:%v", txnId, err)
-		if txnOp != nil {
-			err2 = txnOp.Rollback(ctx2)
-			if err2 != nil {
-				logErrorf(sessionInfo, "CommitTxn: txn operator rollback failed. txnId:%s error:%v", txnId, err2)
+	/*
+		if err = storage.Commit(ctx2, txnOp); err != nil {
+			logErrorf(sessionInfo, "CommitTxn: storage commit failed. txnId:%s error:%v", txnId, err)
+			if txnOp != nil {
+				err2 = txnOp.Rollback(ctx2)
+				if err2 != nil {
+					logErrorf(sessionInfo, "CommitTxn: txn operator rollback failed. txnId:%s error:%v", txnId, err2)
+				}
 			}
+			th.SetTxnOperatorInvalid()
+			return err
 		}
-		th.SetTxnOperatorInvalid()
-		return err
-	}
+	*/
 	if txnOp != nil {
 		err = txnOp.Commit(ctx2)
 		if err != nil {

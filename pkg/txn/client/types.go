@@ -190,4 +190,7 @@ type Workspace interface {
 	RollbackLastStatement(ctx context.Context) error
 	// DeleteTable deletes the table identified by tableName from table map in the transaction.
 	DeleteTable(ctx context.Context, dbID uint64, tableName string)
+
+	Commit()
+	Rollback()
 }

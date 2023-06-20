@@ -731,6 +731,7 @@ func (s *Scope) notifyAndReceiveFromRemote(errChan chan error) {
 			defer func(streamSender morpc.Stream) {
 				close(reg.Ch)
 				_ = streamSender.Close(true)
+				fmt.Printf("[haha(normal)] proc %p with %s close the sender\n", s.Proc, DebugShowScopes([]*Scope{s}))
 			}(streamSender)
 
 			message := cnclient.AcquireMessage()
@@ -778,7 +779,8 @@ func receiveMsgAndForward(s *Scope, receiveCh chan morpc.Message, forwardCh chan
 		case val, ok = <-receiveCh:
 			if val == nil || !ok {
 				fmt.Printf("[receiveMsgAndForward] val?nil = %t, ok = %t\n", val == nil, ok)
-				return moerr.NewStreamClosedNoCtx()
+				return nil
+				//return moerr.NewStreamClosedNoCtx()
 			}
 		}
 

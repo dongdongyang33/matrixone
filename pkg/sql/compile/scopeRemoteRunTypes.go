@@ -160,6 +160,7 @@ func (sender *messageSenderOnClient) close() {
 	}
 	// XXX not a good way to deal it if close failed.
 	_ = sender.streamSender.Close(true)
+	fmt.Printf("[haha(normal) remote sender close stream\n]")
 }
 
 // messageReceiverOnServer is a structure

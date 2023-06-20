@@ -359,6 +359,7 @@ func (tc *txnOperator) WriteAndCommit(ctx context.Context, requests []txn.TxnReq
 
 func (tc *txnOperator) Commit(ctx context.Context) error {
 	util.LogTxnCommit(tc.getTxnMeta(false))
+	tc.workspace.Commit()
 
 	if tc.option.readyOnly {
 		tc.mu.Lock()
@@ -379,6 +380,7 @@ func (tc *txnOperator) Commit(ctx context.Context) error {
 
 func (tc *txnOperator) Rollback(ctx context.Context) error {
 	util.LogTxnRollback(tc.getTxnMeta(false))
+	tc.workspace.Rollback()
 
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
