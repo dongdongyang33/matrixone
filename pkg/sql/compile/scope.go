@@ -16,6 +16,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"sync"
 
@@ -146,6 +147,7 @@ func (s *Scope) MergeRun(c *Compile) error {
 	if _, err := p.MergeRun(s.Proc); err != nil {
 		return err
 	}
+	fmt.Printf("[mergerun] proc %p exec done. waiting children ...\n", s.Proc)
 	// check sub-goroutine's error
 	if errReceiveChan == nil {
 		// check sub-goroutine's error
@@ -422,11 +424,13 @@ func (s *Scope) PushdownRun() error {
 
 func (s *Scope) JoinRun(c *Compile) error {
 	mcpu := s.NodeInfo.Mcpu
+	//mcpu := 1
 	if mcpu <= 1 { // no need to parallel
 		buildScope := c.newJoinBuildScope(s, nil)
 		s.PreScopes = append(s.PreScopes, buildScope)
 		return s.MergeRun(c)
 	}
+	mcpu = 1
 
 	isRight := s.isRight()
 
@@ -478,6 +482,9 @@ func (s *Scope) JoinRun(c *Compile) error {
 	s.PreScopes = append(s.PreScopes, probe_scope)
 	s.PreScopes = append(s.PreScopes, build_scope)
 
+	fmt.Printf("[joinrun] proc %p (buildproc %p, probeproc %p) -> %s\n", build_scope.Proc, probe_scope.Proc, s.Proc, DebugShowScopes([]*Scope{s}))
+	fmt.Printf("[joinrun] proc %p (buildproc %p, probeproc %p) -> %s\n", build_scope.Proc, probe_scope.Proc, s.Proc, DebugShowScopes([]*Scope{s}))
+	s.SetContextRecursively(s.Proc.Ctx)
 	return s.MergeRun(c)
 }
 

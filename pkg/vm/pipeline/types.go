@@ -15,6 +15,8 @@
 package pipeline
 
 import (
+	"fmt"
+
 	"github.com/matrixorigin/matrixone/pkg/vm"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
@@ -88,6 +90,7 @@ type Pipeline struct {
 
 // cleanup do memory release work for whole pipeline.
 func (p *Pipeline) cleanup(proc *process.Process, pipelineFailed bool) {
+	fmt.Printf("[cleanup] proc %p clean up ...\n", proc)
 	// clean all the coming batches.
 	if pipelineFailed {
 		bat := proc.InputBatch()
