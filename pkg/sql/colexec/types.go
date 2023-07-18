@@ -86,6 +86,9 @@ type ReceiverOperator struct {
 	// while Join/Intersect/Minus ... are not
 	aliveMergeReceiver int
 	receiverListener   []reflect.SelectCase
+
+	MergeType int
+	sendCnt   uint64
 }
 
 type RuntimeFilterChan struct {

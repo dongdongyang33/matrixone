@@ -16,6 +16,8 @@ package order
 
 import (
 	"bytes"
+	"fmt"
+
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
@@ -251,6 +253,7 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 
 	bat := proc.InputBatch()
 	if bat == nil {
+		fmt.Printf("[order] proc %p receive nil and done\n", proc)
 		return true, ctr.sortAndSend(proc)
 	}
 

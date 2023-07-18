@@ -374,6 +374,7 @@ func (c *Compile) Run(_ uint64) error {
 
 // run once
 func (c *Compile) runOnce() error {
+	fmt.Printf("[ccompile] %s\n", DebugShowScopes(c.scope))
 	var wg sync.WaitGroup
 
 	errC := make(chan error, len(c.scope))
@@ -2392,7 +2393,7 @@ func (c *Compile) newJoinProbeScope(s *Scope, ss []*Scope) *Scope {
 		Op:      vm.Merge,
 		Idx:     s.Instructions[0].Idx,
 		IsFirst: true,
-		Arg:     &merge.Argument{},
+		Arg:     &merge.Argument{MergeType: ProbeForwardMerge},
 	})
 	rs.appendInstruction(vm.Instruction{
 		Op:  vm.Dispatch,

@@ -15,6 +15,9 @@
 package semi
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/matrixorigin/matrixone/pkg/common/hashmap"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
@@ -57,6 +60,8 @@ type container struct {
 	vecs  []*vector.Vector
 
 	mp *hashmap.JoinMap
+
+	earlyend bool
 }
 
 type Argument struct {
@@ -74,6 +79,9 @@ type Argument struct {
 func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 	ctr := arg.ctr
 	if ctr != nil {
+		if ctr.earlyend {
+			fmt.Printf("[semijoin.Free] proc %p begin to free ... [%s]\n", proc, time.Now())
+		}
 		mp := proc.Mp()
 		ctr.cleanBatch(mp)
 		ctr.cleanEvalVectors()

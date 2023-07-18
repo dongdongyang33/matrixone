@@ -16,6 +16,7 @@ package mergeorder
 
 import (
 	"bytes"
+
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/compare"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
@@ -81,6 +82,7 @@ func (arg *Argument) Free(proc *process.Process, pipelineFailed bool) {
 				ctr.executors[i].Free()
 			}
 		}
+		ctr.FreeMergeTypeOperator(pipelineFailed)
 	}
 }
 
@@ -235,6 +237,7 @@ func Prepare(proc *process.Process, arg any) (err error) {
 	ap.ctr = new(container)
 	ctr := ap.ctr
 	ap.ctr.InitReceiver(proc, true)
+	ap.ctr.MergeType = 100
 
 	length := 2 * len(proc.Reg.MergeReceivers)
 	ctr.batchList = make([]*batch.Batch, 0, length)

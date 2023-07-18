@@ -16,6 +16,7 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"sync/atomic"
 
@@ -478,6 +479,7 @@ func sendToAnyLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (
 		reg := ap.LocalRegs[sendto]
 		select {
 		case <-proc.Ctx.Done():
+			fmt.Printf("[dispatchAny] proc %p ctx done. sent cnt = %d\n", proc, ap.ctr.sendCnt)
 			logutil.Debugf("proc context done during dispatch to any")
 			return true, nil
 		case <-reg.Ctx.Done():
@@ -486,6 +488,7 @@ func sendToAnyLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (
 			ap.ctr.localRegsCnt--
 			ap.ctr.aliveRegCnt--
 			close(reg.Ch)
+			fmt.Printf("[dispatchAny] proc %p reg.ctx done. sent cnt = %d. localcnt = %d, alivecnt = %d\n", proc, ap.ctr.sendCnt, ap.ctr.localRegsCnt, ap.ctr.aliveRegCnt)
 			if ap.ctr.localRegsCnt == 0 {
 				return true, nil
 			}

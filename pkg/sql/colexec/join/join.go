@@ -32,6 +32,7 @@ func Prepare(proc *process.Process, arg any) (err error) {
 	ap := arg.(*Argument)
 	ap.ctr = new(container)
 	ap.ctr.InitReceiver(proc, false)
+	ap.ctr.MergeType = 6
 	ap.ctr.inBuckets = make([]uint8, hashmap.UnitLimit)
 	ap.ctr.vecs = make([]*vector.Vector, len(ap.Conditions[0]))
 	ap.ctr.evecs = make([]evalVector, len(ap.Conditions[0]))
@@ -63,6 +64,7 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 			if ctr.mp == nil {
 				// for inner ,right and semi join, if hashmap is empty, we can finish this pipeline
 				ctr.state = End
+				ctr.earlyEnd = true
 			} else {
 				ctr.state = Probe
 			}

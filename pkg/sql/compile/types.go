@@ -127,6 +127,8 @@ type Scope struct {
 	Reg *process.WaitRegister
 
 	RemoteReceivRegInfos []RemoteReceivRegInfo
+
+	MergeType int
 }
 
 // scopeContext contextual information to assist in the generation of pipeline.Pipeline.

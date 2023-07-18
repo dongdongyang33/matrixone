@@ -16,6 +16,8 @@ package pipeline
 
 import (
 	"bytes"
+	"fmt"
+	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/perfcounter"
@@ -67,9 +69,11 @@ func (p *Pipeline) Run(r engine.Reader, proc *process.Process) (end bool, err er
 		return false, err
 	}
 
+	readCnt := 0
 	for {
 		select {
 		case <-proc.Ctx.Done():
+			fmt.Printf("[pipeline.run] proc %p ctx done, exist [%s]\n", proc, time.Now())
 			proc.SetInputBatch(nil)
 			p.cleanup(proc, false)
 			return true, nil
@@ -87,6 +91,7 @@ func (p *Pipeline) Run(r engine.Reader, proc *process.Process) (end bool, err er
 			a := proc.GetAnalyze(analyzeIdx)
 			a.S3IOByte(bat)
 			a.Alloc(int64(bat.Size()))
+			readCnt++
 		}
 
 		proc.SetInputBatch(bat)
@@ -151,11 +156,13 @@ func (p *Pipeline) MergeRun(proc *process.Process) (end bool, err error) {
 		end, err = vm.Run(p.instructions, proc)
 		if err != nil {
 			proc.Cancel()
+			fmt.Printf("[pipeline.mergerun] proc %p err %s, call cancel() done, begin to cleanup ... [%s]\n", proc, err, time.Now())
 			p.cleanup(proc, true)
 			return end, err
 		}
 		if end {
 			proc.Cancel()
+			fmt.Printf("[pipeline.mergerun] proc %p end, call cancel() done, begin to cleanup ... [%s]\n", proc, time.Now())
 			p.cleanup(proc, false)
 			return end, nil
 		}

@@ -16,6 +16,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"sync"
 
@@ -57,6 +58,19 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	NormalMerge = iota
+	JoinMerge
+	NormalReadMerge
+	LoadMerge
+	ProbeForwardMerge
+	HashMerge
+
+	JoinJoin
+	SemiJoin
+	Hashhash
+)
+
 func DebugPrintScope(prefix []byte, ss []*Scope) {
 	for _, s := range ss {
 		DebugPrintScope(append(prefix, '\t'), s.PreScopes)
@@ -81,6 +95,7 @@ func (s *Scope) Run(c *Compile) (err error) {
 				return err
 			}
 		} else {
+			fmt.Printf("[scope.Run] proc %p %s\n", s.Proc, DebugShowScopes([]*Scope{s}))
 			if _, err = p.Run(s.DataSource.R, s.Proc); err != nil {
 				return err
 			}
@@ -387,8 +402,9 @@ func (s *Scope) ParallelRun(c *Compile, remote bool) error {
 		}
 		ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
 	}
-	newScope := newParallelScope(s, ss)
+	newScope := newParallelScope(s, ss, NormalReadMerge)
 	newScope.SetContextRecursively(s.Proc.Ctx)
+	fmt.Printf("[prallelrun] proc %p %s\n", s.Proc, DebugShowScopes([]*Scope{newScope}))
 	return newScope.MergeRun(c)
 }
 
@@ -417,6 +433,7 @@ func (s *Scope) PushdownRun() error {
 
 func (s *Scope) JoinRun(c *Compile) error {
 	mcpu := s.NodeInfo.Mcpu
+	//mcpu := 1
 	if mcpu <= 1 { // no need to parallel
 		buildScope := c.newJoinBuildScope(s, nil)
 		s.PreScopes = append(s.PreScopes, buildScope)
@@ -437,10 +454,11 @@ func (s *Scope) JoinRun(c *Compile) error {
 			NodeInfo: s.NodeInfo,
 		}
 		ss[i].Proc = process.NewWithAnalyze(s.Proc, s.Proc.Ctx, 2, c.anal.Nodes())
-		ss[i].Proc.Reg.MergeReceivers[1].Ch = make(chan *batch.Batch, 10)
+		ss[i].Proc.Reg.MergeReceivers[1].Ch = make(chan *batch.Batch, 1)
 	}
 	probe_scope, build_scope := c.newJoinProbeScope(s, ss), c.newJoinBuildScope(s, ss)
-	s = newParallelScope(s, ss)
+	probe_scope.MergeType = ProbeForwardMerge
+	s = newParallelScope(s, ss, JoinMerge)
 
 	if isRight {
 		channel := make(chan *bitmap.Bitmap, mcpu)
@@ -469,10 +487,13 @@ func (s *Scope) JoinRun(c *Compile) error {
 			}
 		}
 	}
-	s.PreScopes = append(s.PreScopes, chp...)
-	s.PreScopes = append(s.PreScopes, probe_scope)
-	s.PreScopes = append(s.PreScopes, build_scope)
-
+	probe_scope.PreScopes = append(probe_scope.PreScopes, chp...)
+	s.PreScopes[0].PreScopes = append(s.PreScopes[0].PreScopes, build_scope, probe_scope)
+	//probe_scope.PreScopes = append(probe_scope.PreScopes, chp...)
+	//s.PreScopes = append(s.PreScopes, probe_scope)
+	//s.PreScopes = append(s.PreScopes, build_scope)
+	s.SetContextRecursively(s.Proc.Ctx)
+	fmt.Printf("[joinrun] proc %p (probe.proc %p, build.proc %p) %s\n", s.Proc, probe_scope.Proc, build_scope.Proc, DebugShowScopes([]*Scope{s}))
 	return s.MergeRun(c)
 }
 
@@ -498,12 +519,12 @@ func (s *Scope) LoadRun(c *Compile) error {
 		}
 		ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
 	}
-	newScope := newParallelScope(s, ss)
+	newScope := newParallelScope(s, ss, LoadMerge)
 
 	return newScope.MergeRun(c)
 }
 
-func newParallelScope(s *Scope, ss []*Scope) *Scope {
+func newParallelScope(s *Scope, ss []*Scope, mergeType int) *Scope {
 	var flg bool
 
 	for i, in := range s.Instructions {
@@ -635,8 +656,10 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 		s.Instructions[0] = vm.Instruction{
 			Op:  vm.Merge,
 			Idx: s.Instructions[0].Idx, // TODO: remove it
-			Arg: &merge.Argument{},
+			Arg: &merge.Argument{MergeType: mergeType},
 		}
+		s.MergeType = mergeType
+
 		s.Instructions[1] = s.Instructions[len(s.Instructions)-1]
 		s.Instructions = s.Instructions[:2]
 	}

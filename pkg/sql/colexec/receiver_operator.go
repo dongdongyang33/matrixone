@@ -15,6 +15,7 @@
 package colexec
 
 import (
+	"fmt"
 	"reflect"
 	"time"
 
@@ -30,9 +31,13 @@ func (r *ReceiverOperator) InitReceiver(proc *process.Process, isMergeType bool)
 	r.proc = proc
 	if isMergeType {
 		r.aliveMergeReceiver = len(proc.Reg.MergeReceivers)
-		r.receiverListener = make([]reflect.SelectCase, r.aliveMergeReceiver)
+		r.receiverListener = make([]reflect.SelectCase, r.aliveMergeReceiver+1)
+		r.receiverListener[0] = reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(r.proc.Ctx.Done()),
+		}
 		for i, mr := range proc.Reg.MergeReceivers {
-			r.receiverListener[i] = reflect.SelectCase{
+			r.receiverListener[i+1] = reflect.SelectCase{
 				Dir:  reflect.SelectRecv,
 				Chan: reflect.ValueOf(mr.Ch),
 			}
@@ -45,8 +50,12 @@ func (r *ReceiverOperator) ReceiveFromSingleReg(regIdx int, analyze process.Anal
 	defer analyze.WaitStop(start)
 	select {
 	case <-r.proc.Ctx.Done():
+		if r.MergeType != 0 {
+			fmt.Printf("[singleeceiver] type %d - proc %p ctx done, current alive cnt = %d, sendCnt = %d [%s]\n", r.MergeType, r.proc, r.aliveMergeReceiver, r.sendCnt, time.Now())
+		}
 		return nil, true, nil
 	case bat, ok := <-r.proc.Reg.MergeReceivers[regIdx].Ch:
+		r.sendCnt++
 		if !ok {
 			return nil, true, nil
 		}
@@ -64,6 +73,9 @@ func (r *ReceiverOperator) FreeAllReg() {
 func (r *ReceiverOperator) FreeSingleReg(regIdx int) {
 	for {
 		bat, ok := <-r.proc.Reg.MergeReceivers[regIdx].Ch
+		if r.MergeType != 0 {
+			fmt.Printf("[singleeceiver] type %d - proc %p done, current alive cnt = %d, sendCnt = %d [%s]\n", r.MergeType, r.proc, r.aliveMergeReceiver, r.sendCnt, time.Now())
+		}
 		if !ok || bat == nil {
 			break
 		}
@@ -85,15 +97,28 @@ func (r *ReceiverOperator) ReceiveFromAllRegs(analyze process.Analyze) (*batch.B
 		// children and the children will close the channel
 		chosen, value, ok := reflect.Select(r.receiverListener)
 		analyze.WaitStop(start)
-		if !ok {
-			select {
-			case <-r.proc.Ctx.Done():
-				logutil.Debugf("process context done during merge receive")
-			default:
-				logutil.Errorf("children pipeline closed unexpectedly")
+		if chosen == 0 {
+			if r.MergeType != 0 {
+				fmt.Printf("[mergereceiver(chosen0)] merge type %d - proc %p ctx done, current alive cnt = %d, sendCnt = %d\n", r.MergeType, r.proc, r.aliveMergeReceiver, r.sendCnt)
 			}
+			return nil, true, nil
+		}
+
+		if !ok {
+			logutil.Errorf("children pipeline closed unexpectedly")
+			/*
+				select {
+				case <-r.proc.Ctx.Done():
+					logutil.Debugf("process context done during merge receive")
+				default:
+					logutil.Errorf("children pipeline closed unexpectedly")
+				}
+			*/
 			r.receiverListener = append(r.receiverListener[:chosen], r.receiverListener[chosen+1:]...)
 			r.aliveMergeReceiver--
+			if r.MergeType != 0 {
+				fmt.Printf("[mergereceiver] merge type %d - proc %p children pipeline closed unexpectedly, current alive cnt = %d with sendCnt = %d\n", r.MergeType, r.proc, r.aliveMergeReceiver, r.sendCnt)
+			}
 			return nil, true, nil
 		}
 
@@ -102,6 +127,9 @@ func (r *ReceiverOperator) ReceiveFromAllRegs(analyze process.Analyze) (*batch.B
 		if bat == nil {
 			r.receiverListener = append(r.receiverListener[:chosen], r.receiverListener[chosen+1:]...)
 			r.aliveMergeReceiver--
+			if r.MergeType != 0 {
+				fmt.Printf("[mergereceiver] merge type %d  - proc %p receive nil, current alive cnt = %d with sendCnt = %d\n", r.MergeType, r.proc, r.aliveMergeReceiver, r.sendCnt)
+			}
 			continue
 		}
 
@@ -110,16 +138,28 @@ func (r *ReceiverOperator) ReceiveFromAllRegs(analyze process.Analyze) (*batch.B
 			continue
 		}
 
+		r.sendCnt++
 		return bat, false, nil
 	}
 }
 
 func (r *ReceiverOperator) FreeMergeTypeOperator(failed bool) {
+	leaveCnt := 0
+	if r.MergeType != 0 {
+		fmt.Printf("[mergereceiver.Free] proc %p begin ... receivers len = %d, alive cnt = %d with sendCnt = %d [%s]\n", r.proc, len(r.receiverListener), r.aliveMergeReceiver, r.sendCnt, time.Now())
+	}
+	if len(r.receiverListener) != 0 {
+		r.receiverListener = r.receiverListener[1:]
+	}
 	for r.aliveMergeReceiver > 0 {
 		chosen, value, ok := reflect.Select(r.receiverListener)
+
 		if !ok {
 			r.receiverListener = append(r.receiverListener[:chosen], r.receiverListener[chosen+1:]...)
 			r.aliveMergeReceiver--
+			if r.MergeType != 0 {
+				fmt.Printf("[mergereceiver.Free] merge type %d  - proc %p receive close, current alive cnt = %d\n", r.MergeType, r.proc, r.aliveMergeReceiver)
+			}
 			continue
 		}
 
@@ -128,8 +168,15 @@ func (r *ReceiverOperator) FreeMergeTypeOperator(failed bool) {
 		if bat == nil {
 			r.receiverListener = append(r.receiverListener[:chosen], r.receiverListener[chosen+1:]...)
 			r.aliveMergeReceiver--
+			if r.MergeType != 0 {
+				fmt.Printf("[mergereceiver.Free] merge type %d  - proc %p receive nil, current alive cnt = %d\n", r.MergeType, r.proc, r.aliveMergeReceiver)
+			}
 			continue
 		}
+		leaveCnt++
 		bat.Clean(r.proc.Mp())
+	}
+	if r.MergeType != 0 {
+		fmt.Printf("[mergereceiver.Free] merge type %d  - proc %p clean up job done, handled leave batch cnt = %d [%s]\n", r.MergeType, r.proc, leaveCnt, time.Now())
 	}
 }

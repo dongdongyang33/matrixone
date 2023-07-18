@@ -28,6 +28,7 @@ func Prepare(proc *process.Process, arg any) error {
 	ap := arg.(*Argument)
 	ap.ctr = new(container)
 	ap.ctr.InitReceiver(proc, true)
+	ap.ctr.MergeType = ap.MergeType
 	return nil
 }
 

@@ -63,6 +63,7 @@ func Call(idx int, proc *process.Process, arg any, isFirst bool, isLast bool) (b
 			}
 			if ctr.mp == nil {
 				// for inner ,right and semi join, if hashmap is empty, we can finish this pipeline
+				ctr.earlyend = true
 				ctr.state = End
 			} else {
 				ctr.state = Probe
