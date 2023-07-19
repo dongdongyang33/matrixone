@@ -12,6 +12,7 @@ func NewArena() *Arena {
 	return NewArenaWithSize(DefaultArenaSize)
 }
 
+// the input unit is Byte
 func NewArenaWithSize(size int) *Arena {
 	if size < ChunkSize {
 		size = ChunkSize
