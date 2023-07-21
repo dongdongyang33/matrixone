@@ -21,6 +21,7 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/cnservice/cnclient"
+	"github.com/matrixorigin/matrixone/pkg/common/arena"
 	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/morpc"
@@ -57,6 +58,17 @@ import (
 	"github.com/panjf2000/ants/v2"
 	"go.uber.org/zap"
 )
+
+func NewScope(c *Compile, magic magicType) *Scope {
+	s := arena.New[Scope](c.a)
+	s.Magic = magic
+	return s
+}
+
+func NewScopes(c *Compile, len, cap int) []*Scope {
+	ss := arena.MakeSlice[*Scope](c.a, len, cap)
+	return ss
+}
 
 // Run read data from storage engine and run the instructions of scope.
 func (s *Scope) Run(c *Compile) (err error) {
@@ -365,20 +377,35 @@ func (s *Scope) ParallelRun(c *Compile, remote bool) error {
 		return s.Run(c)
 	}
 
-	ss := make([]*Scope, mcpu)
+	ss := NewScopes(c, mcpu, mcpu)
+	//ss := make([]*Scope, mcpu)
 	for i := 0; i < mcpu; i++ {
-		ss[i] = &Scope{
-			Magic: Normal,
-			DataSource: &Source{
-				R:            rds[i],
-				SchemaName:   s.DataSource.SchemaName,
-				RelationName: s.DataSource.RelationName,
-				Attributes:   s.DataSource.Attributes,
-				AccountId:    s.DataSource.AccountId,
-			},
-			NodeInfo: s.NodeInfo,
+		ss[i] = NewScope(c, Normal)
+		dataSource := NewSource(c)
+		{
+			dataSource.R = rds[i]
+			dataSource.SchemaName = s.DataSource.SchemaName
+			dataSource.RelationName = s.DataSource.RelationName
+			dataSource.Attributes = s.DataSource.Attributes
+			dataSource.AccountId = s.DataSource.AccountId
 		}
+		ss[i].DataSource = dataSource
+		ss[i].NodeInfo = s.NodeInfo
 		ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
+		/*
+			ss[i] = &Scope{
+				Magic: Normal,
+				DataSource: &Source{
+					R:            rds[i],
+					SchemaName:   s.DataSource.SchemaName,
+					RelationName: s.DataSource.RelationName,
+					Attributes:   s.DataSource.Attributes,
+					AccountId:    s.DataSource.AccountId,
+				},
+				NodeInfo: s.NodeInfo,
+			}
+			ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
+		*/
 	}
 	newScope := newParallelScope(s, ss)
 	newScope.SetContextRecursively(s.Proc.Ctx)
@@ -423,15 +450,24 @@ func (s *Scope) JoinRun(c *Compile) error {
 		chp[i].IsEnd = true
 	}
 
-	ss := make([]*Scope, mcpu)
+	ss := NewScopes(c, mcpu, mcpu)
 	for i := 0; i < mcpu; i++ {
-		ss[i] = &Scope{
-			Magic:    Merge,
-			NodeInfo: s.NodeInfo,
-		}
+		ss[i] = NewScope(c, Merge)
+		ss[i].NodeInfo = s.NodeInfo
 		ss[i].Proc = process.NewWithAnalyze(s.Proc, s.Proc.Ctx, 2, c.anal.Nodes())
 		ss[i].Proc.Reg.MergeReceivers[1].Ch = make(chan *batch.Batch, 10)
 	}
+	/*
+		ss := make([]*Scope, mcpu)
+		for i := 0; i < mcpu; i++ {
+			ss[i] = &Scope{
+				Magic:    Merge,
+				NodeInfo: s.NodeInfo,
+			}
+			ss[i].Proc = process.NewWithAnalyze(s.Proc, s.Proc.Ctx, 2, c.anal.Nodes())
+			ss[i].Proc.Reg.MergeReceivers[1].Ch = make(chan *batch.Batch, 10)
+		}
+	*/
 	probe_scope, build_scope := c.newJoinProbeScope(s, ss), c.newJoinBuildScope(s, ss)
 	s = newParallelScope(s, ss)
 
@@ -475,21 +511,27 @@ func (s *Scope) isRight() bool {
 
 func (s *Scope) LoadRun(c *Compile) error {
 	mcpu := s.NodeInfo.Mcpu
-	ss := make([]*Scope, mcpu)
+	ss := NewScopes(c, mcpu, mcpu)
+	//ss := make([]*Scope, mcpu)
 	bat := batch.NewWithSize(1)
 	{
 		bat.Vecs[0] = vector.NewConstNull(types.T_int64.ToType(), 1, c.proc.Mp())
 		bat.InitZsOne(1)
 	}
 	for i := 0; i < mcpu; i++ {
-		ss[i] = &Scope{
-			Magic: Normal,
-			DataSource: &Source{
-				Bat: bat,
-			},
-			NodeInfo: s.NodeInfo,
-		}
+		ss[i] = NewScope(c, Normal)
+		ss[i].DataSource = NewSourceWithBatch(c, bat)
 		ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
+		/*
+			ss[i] = &Scope{
+				Magic: Normal,
+				DataSource: &Source{
+					Bat: bat,
+				},
+				NodeInfo: s.NodeInfo,
+			}
+			ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
+		*/
 	}
 	newScope := newParallelScope(s, ss)
 

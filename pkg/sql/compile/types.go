@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 
 	"github.com/google/uuid"
+	"github.com/matrixorigin/matrixone/pkg/common/arena"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/pb/pipeline"
@@ -83,6 +84,17 @@ type Source struct {
 	AccountId              *plan.PubInfo
 
 	RuntimeFilterSpecs []*plan.RuntimeFilterSpec
+}
+
+func NewSource(c *Compile) *Source {
+	s := arena.New[Source](c.a)
+	return s
+}
+
+func NewSourceWithBatch(c *Compile, bat *batch.Batch) *Source {
+	s := arena.New[Source](c.a)
+	s.Bat = bat
+	return s
 }
 
 // Col is the information of attribute
@@ -209,6 +221,8 @@ type Compile struct {
 	isInternal bool
 	// cnLabel is the CN labels which is received from proxy when build connection.
 	cnLabel map[string]string
+
+	a *arena.Arena
 }
 
 type RemoteReceivRegInfo struct {

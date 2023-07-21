@@ -22,6 +22,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/matrixorigin/matrixone/pkg/cnservice/cnclient"
+	"github.com/matrixorigin/matrixone/pkg/common/arena"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/morpc"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -291,6 +292,7 @@ func (receiver *messageReceiverOnServer) newCompile() *Compile {
 	}
 
 	c.runtimeFilterReceiverMap = make(map[int32]chan *pipeline.RuntimeFilter)
+	c.a = arena.NewArena()
 
 	return c
 }
