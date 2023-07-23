@@ -28,6 +28,7 @@ import (
 	plan2 "github.com/matrixorigin/matrixone/pkg/sql/plan"
 
 	"github.com/google/uuid"
+	"github.com/matrixorigin/matrixone/pkg/common/arena"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/config"
@@ -211,6 +212,8 @@ type Session struct {
 
 	// requestLabel is the CN label info requested from client.
 	requestLabel map[string]string
+
+	a *arena.Arena
 }
 
 func (ses *Session) setRoutineManager(rm *RoutineManager) {
@@ -431,6 +434,8 @@ func NewSession(proto Protocol, mp *mpool.MPool, pu *config.ParameterUnit,
 	runtime.SetFinalizer(ses, func(ss *Session) {
 		ss.Close()
 	})
+	ses.a = arena.NewArena(ses.uuid)
+	fmt.Printf("[Ssession] create new session %s\n", ses.uuid)
 	return ses
 }
 
@@ -482,6 +487,8 @@ func (ses *Session) Close() {
 		mpool.DeleteMPool(mp)
 		ses.SetMemPool(nil)
 	}
+	ses.a.Free()
+	fmt.Printf("[Ssession] session %s closing ...\n", ses.uuid)
 }
 
 // BackgroundSession executing the sql in background

@@ -292,7 +292,7 @@ func (receiver *messageReceiverOnServer) newCompile() *Compile {
 	}
 
 	c.runtimeFilterReceiverMap = make(map[int32]chan *pipeline.RuntimeFilter)
-	c.a = arena.NewArena()
+	c.a = arena.NewArena(uuid.New())
 
 	return c
 }

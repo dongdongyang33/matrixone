@@ -3,13 +3,16 @@ package arena
 import (
 	"sync"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // test race
 func TestArenaForRace(t *testing.T) {
 	var wg sync.WaitGroup
 
-	cl := NewArena()
+	u := uuid.New()
+	cl := NewArena(u)
 	run := func() {
 		defer wg.Done()
 		for i := 0; i < 1000; i++ {

@@ -4,16 +4,17 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/google/uuid"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 )
 
 // same as golang standard arena, but you don't need to think about concurrency safety
-func NewArena() *Arena {
-	return NewArenaWithSize(DefaultArenaSize)
+func NewArena(uid uuid.UUID) *Arena {
+	return NewArenaWithSize(uid, DefaultArenaSize)
 }
 
 // the input unit is Byte
-func NewArenaWithSize(size int) *Arena {
+func NewArenaWithSize(uid uuid.UUID, size int) *Arena {
 	if size < ChunkSize {
 		size = ChunkSize
 	}
@@ -23,6 +24,7 @@ func NewArenaWithSize(size int) *Arena {
 		chunks[i] = newChunk(data[i*ChunkSize:])
 	}
 	return &Arena{
+		Uid:    uid,
 		data:   data,
 		chunks: chunks,
 		ptr:    uintptr(unsafe.Pointer(&data[0])),

@@ -214,6 +214,7 @@ func (exec *txnExecutor) Exec(sql string) (executor.Result, error) {
 		proc,
 		stmts[0],
 		false,
+		nil,
 		nil)
 
 	result := executor.NewResult(exec.s.mp)

@@ -16,6 +16,8 @@ package frontend
 
 import (
 	"context"
+	"fmt"
+
 	"github.com/mohae/deepcopy"
 
 	"github.com/google/uuid"
@@ -329,6 +331,7 @@ func (cwft *TxnComputationWrapper) Compile(requestCtx context.Context, u interfa
 	if tInfo != nil {
 		tenant = tInfo.GetTenant()
 	}
+	fmt.Printf("[cwft.compile] sql %s new compile with ses uid %s and arena uid %s\n", cwft.ses.GetSql(), cwft.ses.uuid, cwft.ses.a.Uid)
 	cwft.compile = compile.New(
 		addr,
 		cwft.ses.GetDatabaseName(),
@@ -341,6 +344,7 @@ func (cwft *TxnComputationWrapper) Compile(requestCtx context.Context, u interfa
 		cwft.stmt,
 		cwft.ses.isInternal,
 		deepcopy.Copy(cwft.ses.getCNLabels()).(map[string]string),
+		cwft.ses.a,
 	)
 
 	if _, ok := cwft.stmt.(*tree.ExplainAnalyze); ok {

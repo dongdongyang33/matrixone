@@ -92,7 +92,7 @@ var analPool = sync.Pool{
 
 // New is used to new an object of compile
 func New(addr, db string, sql string, tenant, uid string, ctx context.Context,
-	e engine.Engine, proc *process.Process, stmt tree.Statement, isInternal bool, cnLabel map[string]string) *Compile {
+	e engine.Engine, proc *process.Process, stmt tree.Statement, isInternal bool, cnLabel map[string]string, a *arena.Arena) *Compile {
 	c := pool.Get().(*Compile)
 	c.clear()
 	c.e = e
@@ -109,8 +109,15 @@ func New(addr, db string, sql string, tenant, uid string, ctx context.Context,
 	c.isInternal = isInternal
 	c.cnLabel = cnLabel
 	c.runtimeFilterReceiverMap = make(map[int32]chan *pipeline.RuntimeFilter)
-	if c.a == nil {
-		c.a = arena.NewArena()
+	if a == nil {
+		c.isSelfMadeArena = true
+		if c.a == nil {
+			c.a = arena.NewArena(uuid.New())
+		}
+	} else {
+		fmt.Printf("[NewCompile] from session. arena's uuid = %s - sql: %s\n", a.Uid, sql)
+		c.isSelfMadeArena = false
+		c.a = a
 	}
 	return c
 }
@@ -145,8 +152,10 @@ func (c *Compile) clear() {
 	for k := range c.cnLabel {
 		delete(c.cnLabel, k)
 	}
-	if c.a != nil {
+	if c.isSelfMadeArena {
 		c.a.Free()
+	} else {
+		c.a = nil
 	}
 }
 
@@ -368,7 +377,8 @@ func (c *Compile) Run(_ uint64) error {
 				c.proc,
 				c.stmt,
 				c.isInternal,
-				c.cnLabel)
+				c.cnLabel,
+				nil)
 			if err := cc.Compile(c.proc.Ctx, c.pn, c.u, c.fill); err != nil {
 				return err
 			}
@@ -386,7 +396,7 @@ func (c *Compile) Run(_ uint64) error {
 
 // run once
 func (c *Compile) runOnce() error {
-	fmt.Printf("[ccompile] %s\n", DebugShowScopes(c.scope))
+	//fmt.Printf("[ccompile] %s\n", DebugShowScopes(c.scope))
 	var wg sync.WaitGroup
 
 	errC := make(chan error, len(c.scope))

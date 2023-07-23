@@ -222,7 +222,8 @@ type Compile struct {
 	// cnLabel is the CN labels which is received from proxy when build connection.
 	cnLabel map[string]string
 
-	a *arena.Arena
+	a               *arena.Arena
+	isSelfMadeArena bool
 }
 
 type RemoteReceivRegInfo struct {
