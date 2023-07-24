@@ -16,6 +16,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"sync"
 
@@ -422,6 +423,8 @@ func (s *Scope) JoinRun(c *Compile) error {
 		return s.MergeRun(c)
 	}
 
+	mcpu *= 4
+
 	isRight := s.isRight()
 
 	chp := s.PreScopes
@@ -472,6 +475,7 @@ func (s *Scope) JoinRun(c *Compile) error {
 	s.PreScopes = append(s.PreScopes, build_scope)
 	s.PreScopes = append(s.PreScopes, probe_scope)
 
+	fmt.Printf("[joinrun] %s\n", DebugShowScopes([]*Scope{s}))
 	return s.MergeRun(c)
 }
 

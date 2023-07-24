@@ -377,6 +377,7 @@ func (c *Compile) Run(_ uint64) error {
 
 // run once
 func (c *Compile) runOnce() error {
+	fmt.Printf("[ccompile] %s\n", DebugShowScopes(c.scope))
 	var wg sync.WaitGroup
 
 	errC := make(chan error, len(c.scope))
@@ -2866,6 +2867,7 @@ func isLaunchMode(cnlist engine.Nodes) bool {
 }
 
 func isSameCN(addr string, currentCNAddr string) bool {
+	return addr == currentCNAddr
 	// just a defensive judgment. In fact, we shouldn't have received such data.
 	parts1 := strings.Split(addr, ":")
 	if len(parts1) != 2 {
