@@ -91,8 +91,8 @@ func init() {
 	constBat.SetRowCount(1)
 }
 
-func dupInstruction(sourceIns *vm.Instruction, regMap map[*process.WaitRegister]*process.WaitRegister, index int) vm.Instruction {
-	res := vm.Instruction{Op: sourceIns.Op, Idx: sourceIns.Idx, IsFirst: sourceIns.IsFirst, IsLast: sourceIns.IsLast}
+func dupInstruction(sourceIns *vm.Instruction, regMap map[*process.WaitRegister]*process.WaitRegister, index int) *vm.Instruction {
+	res := &vm.Instruction{Op: sourceIns.Op, Idx: sourceIns.Idx, IsFirst: sourceIns.IsFirst, IsLast: sourceIns.IsLast}
 	switch sourceIns.Op {
 	case vm.Anti:
 		t := sourceIns.Arg.(*anti.Argument)
@@ -1074,12 +1074,12 @@ func constructDeleteDispatchAndLocal(
 		arg.LocalRegs,
 		rs[currentIdx].Proc.Reg.MergeReceivers[currentIdx])
 
-	ss[currentIdx].appendInstruction(vm.Instruction{
+	ss[currentIdx].appendInstruction(&vm.Instruction{
 		Op:  vm.Dispatch,
 		Arg: arg,
 	})
 	// add merge to recieve all batches
-	rs[currentIdx].appendInstruction(vm.Instruction{
+	rs[currentIdx].appendInstruction(&vm.Instruction{
 		Op:  vm.Merge,
 		Arg: &merge.Argument{},
 	})
@@ -1312,7 +1312,7 @@ func constructLoopMark(n *plan.Node, typs []types.Type, proc *process.Process) *
 	}
 }
 
-func constructHashBuild(c *Compile, in vm.Instruction, proc *process.Process, isDup bool) *hashbuild.Argument {
+func constructHashBuild(c *Compile, in *vm.Instruction, proc *process.Process, isDup bool) *hashbuild.Argument {
 	// XXX BUG
 	// relation index of arg.Conditions should be rewritten to 0 here.
 

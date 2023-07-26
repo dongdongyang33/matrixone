@@ -553,7 +553,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 			flg = true
 			arg := in.Arg.(*top.Argument)
 			s.Instructions = s.Instructions[i:]
-			s.Instructions[0] = vm.Instruction{
+			s.Instructions[0] = &vm.Instruction{
 				Op:  vm.MergeTop,
 				Idx: in.Idx,
 				Arg: &mergetop.Argument{
@@ -562,7 +562,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 				},
 			}
 			for j := range ss {
-				ss[j].appendInstruction(vm.Instruction{
+				ss[j].appendInstruction(&vm.Instruction{
 					Op:      vm.Top,
 					Idx:     in.Idx,
 					IsFirst: in.IsFirst,
@@ -576,7 +576,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 			flg = true
 			arg := in.Arg.(*order.Argument)
 			s.Instructions = s.Instructions[i:]
-			s.Instructions[0] = vm.Instruction{
+			s.Instructions[0] = &vm.Instruction{
 				Op:  vm.MergeOrder,
 				Idx: in.Idx,
 				Arg: &mergeorder.Argument{
@@ -584,7 +584,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 				},
 			}
 			for j := range ss {
-				ss[j].appendInstruction(vm.Instruction{
+				ss[j].appendInstruction(&vm.Instruction{
 					Op:      vm.Order,
 					Idx:     in.Idx,
 					IsFirst: in.IsFirst,
@@ -597,7 +597,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 			flg = true
 			arg := in.Arg.(*limit.Argument)
 			s.Instructions = s.Instructions[i:]
-			s.Instructions[0] = vm.Instruction{
+			s.Instructions[0] = &vm.Instruction{
 				Op:  vm.MergeLimit,
 				Idx: in.Idx,
 				Arg: &mergelimit.Argument{
@@ -605,7 +605,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 				},
 			}
 			for j := range ss {
-				ss[j].appendInstruction(vm.Instruction{
+				ss[j].appendInstruction(&vm.Instruction{
 					Op:      vm.Limit,
 					Idx:     in.Idx,
 					IsFirst: in.IsFirst,
@@ -618,7 +618,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 			flg = true
 			arg := in.Arg.(*group.Argument)
 			s.Instructions = s.Instructions[i:]
-			s.Instructions[0] = vm.Instruction{
+			s.Instructions[0] = &vm.Instruction{
 				Op:  vm.MergeGroup,
 				Idx: in.Idx,
 				Arg: &mergegroup.Argument{
@@ -626,7 +626,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 				},
 			}
 			for j := range ss {
-				ss[j].appendInstruction(vm.Instruction{
+				ss[j].appendInstruction(&vm.Instruction{
 					Op:      vm.Group,
 					Idx:     in.Idx,
 					IsFirst: in.IsFirst,
@@ -642,7 +642,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 			flg = true
 			arg := in.Arg.(*offset.Argument)
 			s.Instructions = s.Instructions[i:]
-			s.Instructions[0] = vm.Instruction{
+			s.Instructions[0] = &vm.Instruction{
 				Op:  vm.MergeOffset,
 				Idx: in.Idx,
 				Arg: &mergeoffset.Argument{
@@ -650,7 +650,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 				},
 			}
 			for j := range ss {
-				ss[j].appendInstruction(vm.Instruction{
+				ss[j].appendInstruction(&vm.Instruction{
 					Op:      vm.Offset,
 					Idx:     in.Idx,
 					IsFirst: in.IsFirst,
@@ -662,7 +662,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 		case vm.Output:
 		default:
 			for j := range ss {
-				ss[j].appendInstruction(dupInstruction(&in, nil, j))
+				ss[j].appendInstruction(dupInstruction(in, nil, j))
 			}
 		}
 	}
@@ -670,7 +670,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 		for i := range ss {
 			ss[i].Instructions = ss[i].Instructions[:len(ss[i].Instructions)-1]
 		}
-		s.Instructions[0] = vm.Instruction{
+		s.Instructions[0] = &vm.Instruction{
 			Op:  vm.Merge,
 			Idx: s.Instructions[0].Idx, // TODO: remove it
 			Arg: &merge.Argument{},
@@ -699,7 +699,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 	j := 0
 	for i := range ss {
 		if !ss[i].IsEnd {
-			ss[i].appendInstruction(vm.Instruction{
+			ss[i].appendInstruction(&vm.Instruction{
 				Op: vm.Connector,
 				Arg: &connector.Argument{
 					Reg: s.Proc.Reg.MergeReceivers[j],
@@ -711,7 +711,7 @@ func newParallelScope(s *Scope, ss []*Scope) *Scope {
 	return s
 }
 
-func (s *Scope) appendInstruction(in vm.Instruction) {
+func (s *Scope) appendInstruction(in *vm.Instruction) {
 	if !s.IsEnd {
 		s.Instructions = append(s.Instructions, in)
 	}

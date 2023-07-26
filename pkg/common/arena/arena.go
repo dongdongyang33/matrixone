@@ -24,6 +24,7 @@ func NewArenaWithSize(uid uuid.UUID, size int) *Arena {
 	for i := range chunks {
 		chunks[i] = newChunk(data[i*ChunkSize:])
 	}
+	fmt.Printf("[NewArena] uuid %s with chunks cnt %d and data len %d\n", uid, len(chunks), len(data))
 	return &Arena{
 		Cnt:    0,
 		Uid:    uid,

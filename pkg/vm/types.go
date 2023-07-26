@@ -107,7 +107,7 @@ type InstructionArgument interface {
 	Free(proc *process.Process, pipelineFailed bool)
 }
 
-type Instructions []Instruction
+type Instructions []*Instruction
 
 func (ins *Instruction) IsBrokenNode() bool {
 	switch ins.Op {

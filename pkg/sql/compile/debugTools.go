@@ -176,7 +176,7 @@ func debugShowScopes(ss []*Scope, gap int, rmp map[*process.WaitRegister]int) st
 	}
 
 	// explain the operator information
-	showInstruction := func(instruction vm.Instruction, mp map[*process.WaitRegister]int) string {
+	showInstruction := func(instruction *vm.Instruction, mp map[*process.WaitRegister]int) string {
 		id := instruction.Op
 		name, ok := debugInstructionNames[id]
 		if ok {

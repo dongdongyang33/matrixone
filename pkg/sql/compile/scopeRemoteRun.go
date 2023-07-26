@@ -369,7 +369,7 @@ func encodeProcessInfo(proc *process.Process) ([]byte, error) {
 
 func refactorScope(c *Compile, s *Scope) *Scope {
 	rs := c.newMergeScope([]*Scope{s})
-	rs.Instructions = append(rs.Instructions, vm.Instruction{
+	rs.Instructions = append(rs.Instructions, &vm.Instruction{
 		Op:  vm.Output,
 		Idx: -1, // useless
 		Arg: &output.Argument{Data: nil, Func: c.fill},
@@ -485,7 +485,7 @@ func fillInstructionsForPipeline(s *Scope, ctx *scopeContext, p *pipeline.Pipeli
 	// Instructions
 	p.InstructionList = make([]*pipeline.Instruction, len(s.Instructions))
 	for i := range p.InstructionList {
-		if ctxId, p.InstructionList[i], err = convertToPipelineInstruction(&s.Instructions[i], ctx, ctxId, s.NodeInfo); err != nil {
+		if ctxId, p.InstructionList[i], err = convertToPipelineInstruction(s.Instructions[i], ctx, ctxId, s.NodeInfo); err != nil {
 			return ctxId, err
 		}
 	}
@@ -605,7 +605,7 @@ func fillInstructionsForScope(s *Scope, ctx *scopeContext, p *pipeline.Pipeline,
 			return err
 		}
 	}
-	s.Instructions = make([]vm.Instruction, len(p.InstructionList))
+	s.Instructions = make([]*vm.Instruction, len(p.InstructionList))
 	for i := range s.Instructions {
 		if s.Instructions[i], err = convertToVmInstruction(p.InstructionList[i], ctx, eng); err != nil {
 			return err
@@ -976,8 +976,8 @@ func convertToPipelineInstruction(opr *vm.Instruction, ctx *scopeContext, ctxId 
 }
 
 // convert pipeline.Instruction to vm.Instruction
-func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext, eng engine.Engine) (vm.Instruction, error) {
-	v := vm.Instruction{Op: vm.OpType(opr.Op), Idx: int(opr.Idx), IsFirst: opr.IsFirst, IsLast: opr.IsLast}
+func convertToVmInstruction(opr *pipeline.Instruction, ctx *scopeContext, eng engine.Engine) (*vm.Instruction, error) {
+	v := &vm.Instruction{Op: vm.OpType(opr.Op), Idx: int(opr.Idx), IsFirst: opr.IsFirst, IsLast: opr.IsLast}
 	switch v.Op {
 	case vm.Deletion:
 		t := opr.GetDelete()
@@ -1625,7 +1625,7 @@ func (ctx *scopeContext) addSubPipeline(id uint64, idx int32, ctxId int32, nodeI
 		PushdownId:   id,
 		PushdownAddr: nodeInfo.Addr,
 	}
-	ds.appendInstruction(vm.Instruction{
+	ds.appendInstruction(&vm.Instruction{
 		Op: vm.Connector,
 		Arg: &connector.Argument{
 			Reg: ctx.scope.Proc.Reg.MergeReceivers[idx],
