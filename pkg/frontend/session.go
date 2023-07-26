@@ -495,6 +495,7 @@ func (ses *Session) Close() {
 		ses.SetMemPool(nil)
 	}
 	ses.a.Free()
+	ses.a = nil
 	fmt.Printf("[Ssession] session %s closing ...\n", ses.uuid)
 }
 

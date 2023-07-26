@@ -1,6 +1,7 @@
 package arena
 
 import (
+	"fmt"
 	"sync/atomic"
 	"unsafe"
 
@@ -24,6 +25,7 @@ func NewArenaWithSize(uid uuid.UUID, size int) *Arena {
 		chunks[i] = newChunk(data[i*ChunkSize:])
 	}
 	return &Arena{
+		Cnt:    0,
 		Uid:    uid,
 		data:   data,
 		chunks: chunks,
@@ -63,9 +65,17 @@ func FreeSlice[T any](a *Arena, vs []T) {
 }
 
 func (a *Arena) Free() {
+	a.AddCnt(-1, true)
 	a.ptr = 0
 	a.data = nil
 	a.chunks = nil
+}
+
+func (a *Arena) TmpFree() {
+	a.AddCnt(-1, true)
+	a.ptr = 0
+	//a.data = nil
+	//a.chunks = nil
 }
 
 func (a *Arena) alloc(sz int) []byte {
@@ -171,4 +181,10 @@ func (pg *page) free(ptr uintptr) {
 
 func round(x int) int {
 	return ((x + 7) & (-8))
+}
+
+func (a *Arena) AddCnt(cnt int64, isFree bool) {
+	if after := atomic.AddInt64(&a.Cnt, cnt); after > 1 && !isFree {
+		fmt.Printf("[arena] warning !!! arena used by more than 1 (is %d)!!! uid %s\n", after, a.Uid)
+	}
 }

@@ -3360,6 +3360,7 @@ func (mce *MysqlCmdExecutor) executeStmt(requestCtx context.Context,
 func (mce *MysqlCmdExecutor) doComQuery(requestCtx context.Context, input *UserInput) (retErr error) {
 	beginInstant := time.Now()
 	ses := mce.GetSession()
+	defer ses.a.TmpFree()
 	input.genSqlSourceType(ses)
 	ses.SetShowStmtType(NotShowStatement)
 	proto := ses.GetMysqlProtocol()

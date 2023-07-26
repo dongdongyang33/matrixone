@@ -9,7 +9,7 @@ const (
 	ChunkSize = 1 << 20
 	WordSize  = 8
 
-	DefaultArenaSize = 500 << 20
+	DefaultArenaSize = 100 << 20
 )
 
 type page struct {
@@ -28,6 +28,7 @@ type chunk struct {
 }
 
 type Arena struct {
+	Cnt    int64
 	Uid    uuid.UUID
 	data   []byte
 	chunks []chunk
