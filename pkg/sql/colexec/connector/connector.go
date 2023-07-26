@@ -16,6 +16,8 @@ package connector
 
 import (
 	"bytes"
+	"fmt"
+	"sync/atomic"
 
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
@@ -40,6 +42,11 @@ func Call(_ int, proc *process.Process, arg any, _ bool, _ bool) (process.ExecSt
 		bat.Clean(proc.Mp())
 		return process.ExecNext, nil
 	}
+	if atomic.LoadInt64(&bat.Cnt) == 0 {
+		fmt.Printf("sendToAllLocalFunc receive cnt 0 batch\n")
+		//panic("sendToAllLocalFunc receive cnt 0 batch")
+	}
+
 	select {
 	case <-proc.Ctx.Done():
 		proc.PutBatch(bat)

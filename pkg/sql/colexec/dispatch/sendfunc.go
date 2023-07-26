@@ -16,6 +16,7 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"sync/atomic"
 
@@ -128,6 +129,10 @@ func genShuffledBatsByHash(ap *Argument, bat *batch.Batch, proc *process.Process
 
 // common sender: send to all LocalReceiver
 func sendToAllLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (bool, error) {
+	if atomic.LoadInt64(&bat.Cnt) == 0 {
+		fmt.Printf("sendToAllLocalFunc receive cnt 0 batch\n")
+		//panic("sendToAllLocalFunc receive cnt 0 batch")
+	}
 	refCountAdd := int64(ap.ctr.localRegsCnt - 1)
 	atomic.AddInt64(&bat.Cnt, refCountAdd)
 	if jm, ok := bat.AuxData.(*hashmap.JoinMap); ok {
@@ -143,6 +148,7 @@ func sendToAllLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (
 			return true, nil
 		case <-reg.Ctx.Done():
 			if ap.IsSink {
+				fmt.Printf("[sendToAllLocalFunc] isSink! bat.Cnt - 1\n")
 				atomic.AddInt64(&bat.Cnt, -1)
 				continue
 			}
@@ -473,6 +479,10 @@ func sendToAllFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (bool,
 // if the reg which you want to send to is closed
 // send it to next one.
 func sendToAnyLocalFunc(bat *batch.Batch, ap *Argument, proc *process.Process) (bool, error) {
+	if atomic.LoadInt64(&bat.Cnt) == 0 {
+		fmt.Printf("sendToAnyLocalFunc receive cnt 0 batch\n")
+		//panic("sendToAnyLocalFunc receive cnt 0 batch")
+	}
 	for {
 		sendto := ap.ctr.sendCnt % ap.ctr.localRegsCnt
 		reg := ap.LocalRegs[sendto]

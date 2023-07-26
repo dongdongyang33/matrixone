@@ -423,8 +423,6 @@ func (s *Scope) JoinRun(c *Compile) error {
 		return s.MergeRun(c)
 	}
 
-	mcpu *= 4
-
 	isRight := s.isRight()
 
 	chp := s.PreScopes

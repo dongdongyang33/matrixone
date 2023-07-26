@@ -15,7 +15,9 @@
 package colexec
 
 import (
+	"fmt"
 	"reflect"
+	"sync/atomic"
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
@@ -47,6 +49,10 @@ func (r *ReceiverOperator) ReceiveFromSingleReg(regIdx int, analyze process.Anal
 	case <-r.proc.Ctx.Done():
 		return nil, true, nil
 	case bat, ok := <-r.proc.Reg.MergeReceivers[regIdx].Ch:
+		if atomic.LoadInt64(&bat.Cnt) == 0 {
+			fmt.Printf("ReceiveFromSingleReg receive cnt 0 batch from idx %d\n", regIdx)
+		}
+
 		if !ok {
 			return nil, true, nil
 		}
@@ -108,6 +114,10 @@ func (r *ReceiverOperator) ReceiveFromAllRegs(analyze process.Analyze) (*batch.B
 		if bat.Length() == 0 {
 			bat.Clean(r.proc.Mp())
 			continue
+		}
+
+		if atomic.LoadInt64(&bat.Cnt) == 0 {
+			panic("ReceiveFromAllRegs receive cnt 0 batch")
 		}
 
 		return bat, false, nil
