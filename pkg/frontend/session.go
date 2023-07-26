@@ -219,6 +219,31 @@ type Session struct {
 	startedAt time.Time
 
 	a *arena.Arena
+	//derivedStmt denotes the sql or statement that derived from the user input statement.
+	//a new internal statement derived from the statement the user input and executed during
+	// the execution of it in the same transaction.
+	//
+	//For instance
+	//	select nextval('seq_15')
+	//  nextval internally will derive two sql (a select and an update). the two sql are executed
+	//	in the same transaction.
+	derivedStmt bool
+}
+
+func (ses *Session) IsDerivedStmt() bool {
+	ses.mu.Lock()
+	defer ses.mu.Unlock()
+	return ses.derivedStmt
+}
+
+// ReplaceDerivedStmt sets the derivedStmt and returns the previous value.
+// if b is true, executing a derived statement.
+func (ses *Session) ReplaceDerivedStmt(b bool) bool {
+	ses.mu.Lock()
+	defer ses.mu.Unlock()
+	prev := ses.derivedStmt
+	ses.derivedStmt = b
+	return prev
 }
 
 func (ses *Session) setRoutineManager(rm *RoutineManager) {
@@ -722,6 +747,8 @@ func (ses *Session) GetShareTxnBackgroundExec(ctx context.Context, newRawBatch b
 		mce: NewMysqlCmdExecutor(),
 		ses: NewBackgroundSession(ctx, ses, ses.GetMemPool(), ses.GetParameterUnit(), GSysVariables, true),
 	}
+	//the derived statement execute in a shared transaction in background session
+	bh.ses.ReplaceDerivedStmt(true)
 	if newRawBatch {
 		bh.ses.SetOutputCallback(batchFetcher)
 	}
@@ -1238,6 +1265,7 @@ func (ses *Session) DatabaseNameIsEmpty() bool {
 	return len(ses.GetDatabaseName()) == 0
 }
 
+// GetUserName returns the user_ame and the account_name
 func (ses *Session) GetUserName() string {
 	return ses.GetMysqlProtocol().GetUserName()
 }
@@ -1702,7 +1730,8 @@ func executeSQLInBackgroundSession(
 }
 
 // executeStmtInSameSession executes the statement in the same session.
-// To be clear,
+// To be clear, only for the select statement derived from the set_var statement
+// in an independent transaction
 func executeStmtInSameSession(ctx context.Context, mce *MysqlCmdExecutor, ses *Session, stmt tree.Statement) error {
 	switch stmt.(type) {
 	case *tree.Select, *tree.ParenSelect:
