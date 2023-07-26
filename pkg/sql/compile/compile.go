@@ -2208,7 +2208,7 @@ func (c *Compile) compileShuffleGroup(n *plan.Node, ss []*Scope, ns []*plan.Node
 			Op:      vm.Dispatch,
 			Idx:     c.anal.curr,
 			IsFirst: currentIsFirst,
-			Arg:     constructDispatch(0, children, c.addr, n),
+			Arg:     constructDispatch(0, children, mergeScopes.NodeInfo.Addr, n),
 		})
 
 		appendIdx := 0
