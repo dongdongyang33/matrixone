@@ -185,7 +185,7 @@ func cnMessageHandle(receiver *messageReceiverOnServer) error {
 }
 
 // receiveMessageFromCnServer deal the back message from cn-server.
-func receiveMessageFromCnServer(c *Compile, sender *messageSenderOnClient, lastInstruction vm.Instruction) error {
+func receiveMessageFromCnServer(c *Compile, s *Scope, sender *messageSenderOnClient, lastInstruction vm.Instruction) error {
 	var val morpc.Message
 	var err error
 	var dataBuffer []byte
@@ -257,12 +257,12 @@ func receiveMessageFromCnServer(c *Compile, sender *messageSenderOnClient, lastI
 			return err
 		}
 		lastAnalyze.Network(bat)
-		c.proc.SetInputBatch(bat)
+		s.Proc.SetInputBatch(bat)
 
 		if isConnector {
-			connector.Call(-1, c.proc, lastArg, false, false)
+			connector.Call(-1, s.Proc, lastArg, false, false)
 		} else {
-			dispatch.Call(-1, c.proc, lastArg, false, false)
+			dispatch.Call(-1, s.Proc, lastArg, false, false)
 		}
 
 		dataBuffer = nil
@@ -287,9 +287,9 @@ func (s *Scope) remoteRun(c *Compile) error {
 	lastArg := lastInstruction.Arg
 	switch arg := lastArg.(type) {
 	case *connector.Argument:
-		connector.Prepare(c.proc, arg)
+		connector.Prepare(s.Proc, arg)
 	case *dispatch.Argument:
-		dispatch.Prepare(c.proc, arg)
+		dispatch.Prepare(s.Proc, arg)
 	default:
 		return moerr.NewInvalidInput(c.ctx, "last operator should only be connector or dispatcher")
 	}
@@ -317,7 +317,7 @@ func (s *Scope) remoteRun(c *Compile) error {
 		return err
 	}
 
-	err = receiveMessageFromCnServer(c, sender, lastInstruction)
+	err = receiveMessageFromCnServer(c, s, sender, lastInstruction)
 
 	// tell the connector or dispatcher is over
 	lastArg.Free(s.Proc, err != nil)
