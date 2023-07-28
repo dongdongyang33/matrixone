@@ -1,19 +1,21 @@
 package arena
 
 import (
+	"fmt"
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/google/uuid"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 )
 
 // same as golang standard arena, but you don't need to think about concurrency safety
-func NewArena() *Arena {
-	return NewArenaWithSize(DefaultArenaSize)
+func NewArena(uid uuid.UUID) *Arena {
+	return NewArenaWithSize(uid, DefaultArenaSize)
 }
 
 // the input unit is Byte
-func NewArenaWithSize(size int) *Arena {
+func NewArenaWithSize(uid uuid.UUID, size int) *Arena {
 	if size < ChunkSize {
 		size = ChunkSize
 	}
@@ -22,7 +24,11 @@ func NewArenaWithSize(size int) *Arena {
 	for i := range chunks {
 		chunks[i] = newChunk(data[i*ChunkSize:])
 	}
+	fmt.Printf("[NewArenaWithSize] new arena %s with chunks len %d and data len %d\n", uid, len(chunks), len(data))
 	return &Arena{
+		Uid: uid,
+		Cnt: 1,
+
 		data:   data,
 		chunks: chunks,
 		ptr:    uintptr(unsafe.Pointer(&data[0])),
@@ -169,4 +175,20 @@ func (pg *page) free(ptr uintptr) {
 
 func round(x int) int {
 	return ((x + 7) & (-8))
+}
+
+func (a *Arena) ArenaFree() bool {
+	if after := atomic.AddInt64(&a.Cnt, -1); after == 0 {
+		a.Free()
+		return true
+	} else {
+		fmt.Printf("[MoArena.Free] warning!! moarena %s still hold by other %d doComQuery\n", a.Uid, after)
+	}
+	return false
+}
+
+func (a *Arena) AddRef(cnt int64) {
+	if after := atomic.AddInt64(&a.Cnt, cnt); after > 1 {
+		fmt.Printf("[MoArena.AddRef] warning!! now %d doComQuery using moarena %s\n", after, a.Uid)
+	}
 }

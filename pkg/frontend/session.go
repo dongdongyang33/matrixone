@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/matrixorigin/matrixone/pkg/common/arena"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/config"
@@ -226,6 +227,8 @@ type Session struct {
 	//  nextval internally will derive two sql (a select and an update). the two sql are executed
 	//	in the same transaction.
 	derivedStmt bool
+
+	a *arena.Arena
 }
 
 func (ses *Session) IsDerivedStmt() bool {
@@ -1630,6 +1633,24 @@ func (ses *Session) GetFromRealUser() bool {
 	ses.mu.Lock()
 	defer ses.mu.Unlock()
 	return ses.fromRealUser
+}
+
+func (ses *Session) SetArena() {
+	ses.mu.Lock()
+	defer ses.mu.Unlock()
+	if ses.a == nil {
+		ses.a = arena.NewArena(ses.uuid)
+	} else {
+		ses.a.AddRef(1)
+	}
+}
+
+func (ses *Session) FreeArena() {
+	ses.mu.Lock()
+	defer ses.mu.Unlock()
+	if ses.a.ArenaFree() {
+		ses.a = nil
+	}
 }
 
 func changeVersion(ctx context.Context, ses *Session, db string) error {

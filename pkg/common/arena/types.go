@@ -1,5 +1,7 @@
 package arena
 
+import "github.com/google/uuid"
+
 const (
 	// 4k may be a good size for page
 	PageSize = 4 << 10
@@ -26,6 +28,9 @@ type chunk struct {
 }
 
 type Arena struct {
+	Cnt int64
+	Uid uuid.UUID
+
 	data   []byte
 	chunks []chunk
 	// start pointer

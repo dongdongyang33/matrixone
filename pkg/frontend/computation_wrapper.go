@@ -16,6 +16,7 @@ package frontend
 
 import (
 	"context"
+
 	"github.com/mohae/deepcopy"
 
 	"github.com/google/uuid"
@@ -347,6 +348,7 @@ func (cwft *TxnComputationWrapper) Compile(requestCtx context.Context, u interfa
 		cwft.stmt,
 		cwft.ses.isInternal,
 		deepcopy.Copy(cwft.ses.getCNLabels()).(map[string]string),
+		cwft.ses.a,
 	)
 
 	if _, ok := cwft.stmt.(*tree.ExplainAnalyze); ok {

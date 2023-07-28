@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 
 	"github.com/google/uuid"
+	"github.com/matrixorigin/matrixone/pkg/common/arena"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/pb/pipeline"
@@ -210,6 +211,9 @@ type Compile struct {
 
 	// cnLabel is the CN labels which is received from proxy when build connection.
 	cnLabel map[string]string
+
+	a         *arena.Arena
+	isSelfGen bool
 }
 
 type RemoteReceivRegInfo struct {

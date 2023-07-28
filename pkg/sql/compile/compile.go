@@ -19,8 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/matrixorigin/matrixone/pkg/sql/colexec/mergecte"
-	"github.com/matrixorigin/matrixone/pkg/sql/colexec/mergerecursive"
 	"math"
 	"net"
 	"runtime"
@@ -30,9 +28,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/matrixorigin/matrixone/pkg/sql/colexec/mergecte"
+	"github.com/matrixorigin/matrixone/pkg/sql/colexec/mergerecursive"
+
 	"github.com/google/uuid"
 	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/cnservice/cnclient"
+	"github.com/matrixorigin/matrixone/pkg/common/arena"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/morpc"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -94,7 +96,7 @@ var analPool = sync.Pool{
 
 // New is used to new an object of compile
 func New(addr, db string, sql string, tenant, uid string, ctx context.Context,
-	e engine.Engine, proc *process.Process, stmt tree.Statement, isInternal bool, cnLabel map[string]string) *Compile {
+	e engine.Engine, proc *process.Process, stmt tree.Statement, isInternal bool, cnLabel map[string]string, a *arena.Arena) *Compile {
 	c := pool.Get().(*Compile)
 	c.clear()
 	c.e = e
@@ -111,6 +113,13 @@ func New(addr, db string, sql string, tenant, uid string, ctx context.Context,
 	c.isInternal = isInternal
 	c.cnLabel = cnLabel
 	c.runtimeFilterReceiverMap = make(map[int32]chan *pipeline.RuntimeFilter)
+	if a == nil {
+		c.isSelfGen = true
+		c.a = arena.NewArena(uuid.New())
+	} else {
+		c.isSelfGen = false
+		c.a = a
+	}
 	return c
 }
 
@@ -145,6 +154,7 @@ func (c *Compile) clear() {
 		delete(c.cnLabel, k)
 	}
 	c.s3CounterSet.FileService.ResetS3()
+	c.a = nil
 }
 
 // helper function to judge if init temporary engine is needed
@@ -332,6 +342,9 @@ func (c *Compile) Run(_ uint64) error {
 
 		c.proc.CleanValueScanBatchs()
 		pool.Put(c)
+		if c.isSelfGen {
+			c.a.Free()
+		}
 	}()
 	if c.proc.TxnOperator != nil {
 		c.proc.TxnOperator.ResetRetry(false)
@@ -366,7 +379,8 @@ func (c *Compile) Run(_ uint64) error {
 				c.proc,
 				c.stmt,
 				c.isInternal,
-				c.cnLabel)
+				c.cnLabel,
+				nil)
 			if err := cc.Compile(c.proc.Ctx, c.pn, c.u, c.fill); err != nil {
 				c.fatalLog(1, err)
 				return err

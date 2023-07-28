@@ -21,6 +21,7 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/cnservice/cnclient"
+	"github.com/matrixorigin/matrixone/pkg/common/arena"
 	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/morpc"
@@ -57,6 +58,16 @@ import (
 	"github.com/panjf2000/ants/v2"
 	"go.uber.org/zap"
 )
+
+func NewScope(c *Compile, magic magicType) *Scope {
+	s := arena.New[Scope](c.a)
+	s.Magic = magic
+	return s
+}
+
+func NewScopes(c *Compile, len, cap int) []*Scope {
+	return arena.MakeSlice[*Scope](c.a, len, cap)
+}
 
 // Run read data from storage engine and run the instructions of scope.
 func (s *Scope) Run(c *Compile) (err error) {

@@ -3400,6 +3400,10 @@ func (mce *MysqlCmdExecutor) doComQuery(requestCtx context.Context, input *UserI
 	ses := mce.GetSession()
 	input.genSqlSourceType(ses)
 	ses.SetShowStmtType(NotShowStatement)
+
+	ses.SetArena()
+	defer ses.FreeArena()
+
 	proto := ses.GetMysqlProtocol()
 	ses.SetSql(input.getSql())
 	ses.GetExportParam().Outfile = false
