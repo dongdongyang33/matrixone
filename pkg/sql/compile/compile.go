@@ -111,15 +111,13 @@ func New(addr, db string, sql string, tenant, uid string, ctx context.Context,
 	c.cnLabel = cnLabel
 	c.runtimeFilterReceiverMap = make(map[int32]chan *pipeline.RuntimeFilter)
 	if a == nil {
-		if c.a == nil {
-			c.isSelfMadeArena = true
-			c.a = arena.NewArena(uuid.New())
-		}
+		c.isSelfMadeArena = true
+		c.a = arena.NewArena(uuid.New())
 	} else {
 		fmt.Printf("[NewCompile] from session. arena's uuid = %s - sql: %s\n", a.Uid, sql)
 		c.isSelfMadeArena = false
 		c.a = a
-		c.a.AddCnt(1, false)
+
 	}
 	return c
 }
@@ -158,9 +156,8 @@ func (c *Compile) clear() {
 
 	if c.isSelfMadeArena {
 		c.a.Free()
-	} else {
-		c.a = nil
 	}
+	c.a = nil
 }
 
 // helper function to judge if init temporary engine is needed

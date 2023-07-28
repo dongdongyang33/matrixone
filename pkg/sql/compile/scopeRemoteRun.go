@@ -172,6 +172,7 @@ func cnMessageHandle(receiver *messageReceiverOnServer) error {
 		if err != nil {
 			return err
 		}
+
 		defer func() {
 			// record the number of s3 requests
 			c.proc.AnalInfos[c.anal.curr].S3IOInputCount += c.s3CounterSet.FileService.S3.Put.Load()
@@ -180,6 +181,7 @@ func cnMessageHandle(receiver *messageReceiverOnServer) error {
 			c.proc.AnalInfos[c.anal.curr].S3IOOutputCount += c.s3CounterSet.FileService.S3.Get.Load()
 			c.proc.AnalInfos[c.anal.curr].S3IOOutputCount += c.s3CounterSet.FileService.S3.Delete.Load()
 			c.proc.AnalInfos[c.anal.curr].S3IOOutputCount += c.s3CounterSet.FileService.S3.DeleteMulti.Load()
+
 		}()
 		receiver.finalAnalysisInfo = c.proc.AnalInfos
 		return nil

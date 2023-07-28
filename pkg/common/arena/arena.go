@@ -26,7 +26,7 @@ func NewArenaWithSize(uid uuid.UUID, size int) *Arena {
 	}
 	fmt.Printf("[NewArena] uuid %s with chunks cnt %d and data len %d\n", uid, len(chunks), len(data))
 	return &Arena{
-		Cnt:    0,
+		Cnt:    1,
 		Uid:    uid,
 		data:   data,
 		chunks: chunks,
@@ -39,10 +39,14 @@ func New[T any](a *Arena) *T {
 
 	if sz := round(int(unsafe.Sizeof(v) + WordSize)); sz < PageSize {
 		if data := a.alloc(sz); data != nil {
-			return (*T)(unsafe.Pointer(&data[0]))
+			ret := (*T)(unsafe.Pointer(&data[0]))
+			fmt.Printf("[Arena.New] new a normal %p from arena\n", ret)
+			return ret
 		}
 	}
-	return new(T)
+	ret := new(T)
+	fmt.Printf("[Arena.New] new a normal %p by new() \n", ret)
+	return ret
 }
 
 func Free[T any](a *Arena, v *T) {
@@ -55,10 +59,14 @@ func MakeSlice[T any](a *Arena, len, cap int) []T {
 	sz := int(unsafe.Sizeof(v))
 	if sz := round(sz*cap + WordSize); sz < PageSize {
 		if data := a.alloc(sz); data != nil {
-			return types.DecodeSlice[T](data)[:len]
+			ret := types.DecodeSlice[T](data)[:len]
+			fmt.Printf("[Arena.MakeSlice] new slice %p from arena\n", ret)
+			return ret
 		}
 	}
-	return make([]T, len, cap)
+	ret := make([]T, len, cap)
+	fmt.Printf("[Arena.MakeSlice] new slice %p by make()\n", ret)
+	return ret
 }
 
 func FreeSlice[T any](a *Arena, vs []T) {
@@ -66,10 +74,19 @@ func FreeSlice[T any](a *Arena, vs []T) {
 }
 
 func (a *Arena) Free() {
-	a.AddCnt(-1, true)
 	a.ptr = 0
 	a.data = nil
 	a.chunks = nil
+}
+
+func (a *Arena) ArenaFree() bool {
+	if after := atomic.AddInt64(&a.Cnt, -1); after == 0 {
+		a.Free()
+		return true
+	} else {
+		fmt.Printf("[AnrenaFree] free but still %d using %s arena\n", after, a.Uid)
+		return false
+	}
 }
 
 func (a *Arena) TmpFree() {
@@ -186,6 +203,12 @@ func round(x int) int {
 
 func (a *Arena) AddCnt(cnt int64, isFree bool) {
 	if after := atomic.AddInt64(&a.Cnt, cnt); after > 1 && !isFree {
-		fmt.Printf("[arena] warning !!! arena used by more than 1 (is %d)!!! uid %s\n", after, a.Uid)
+		fmt.Printf("[arena] warning !!! arena used by more than 1(is %d)!!! uid %s\n", after, a.Uid)
+	}
+}
+
+func (a *Arena) AddCompileCnt(cnt int64) {
+	if after := atomic.AddInt64(&a.CompileCnt, cnt); after > 1 {
+		fmt.Printf("[arena] warning !!! arena used by more than 1 compile (is %d)!!! uid %s\n", after, a.Uid)
 	}
 }

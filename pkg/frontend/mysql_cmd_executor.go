@@ -3402,6 +3402,10 @@ func (mce *MysqlCmdExecutor) doComQuery(requestCtx context.Context, input *UserI
 	input.genSqlSourceType(ses)
 	ses.SetShowStmtType(NotShowStatement)
 	proto := ses.GetMysqlProtocol()
+
+	ses.SetArena()
+	defer ses.FreeArena()
+
 	ses.SetSql(input.getSql())
 	ses.GetExportParam().Outfile = false
 	pu := ses.GetParameterUnit()

@@ -135,6 +135,7 @@ func (s *Scope) MergeRun(c *Compile) error {
 	defer wg.Wait()
 
 	s.Proc.Ctx = context.WithValue(s.Proc.Ctx, defines.EngineKey{}, c.e)
+
 	var errReceiveChan chan error
 	if len(s.RemoteReceivRegInfos) > 0 {
 		errReceiveChan = make(chan error, len(s.RemoteReceivRegInfos))
@@ -142,6 +143,9 @@ func (s *Scope) MergeRun(c *Compile) error {
 	}
 	p := pipeline.NewMerge(s.Instructions, s.Reg)
 	if _, err := p.MergeRun(s.Proc); err != nil {
+		if e := recover(); e != nil {
+			err = moerr.ConvertPanicError(s.Proc.Ctx, e)
+		}
 		return err
 	}
 	// check sub-goroutine's error
@@ -412,6 +416,10 @@ func (s *Scope) ParallelRun(c *Compile, remote bool) error {
 	}
 	newScope := newParallelScope(s, ss)
 	newScope.SetContextRecursively(s.Proc.Ctx)
+	if e := recover(); e != nil {
+		err = moerr.ConvertPanicError(s.Proc.Ctx, e)
+		return err
+	}
 	return newScope.MergeRun(c)
 }
 

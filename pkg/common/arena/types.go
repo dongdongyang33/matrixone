@@ -28,10 +28,11 @@ type chunk struct {
 }
 
 type Arena struct {
-	Cnt    int64
-	Uid    uuid.UUID
-	data   []byte
-	chunks []chunk
+	Cnt        int64
+	CompileCnt int64
+	Uid        uuid.UUID
+	data       []byte
+	chunks     []chunk
 	// start pointer
 	ptr uintptr
 }

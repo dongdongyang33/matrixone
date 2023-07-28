@@ -466,8 +466,8 @@ func NewSession(proto Protocol, mp *mpool.MPool, pu *config.ParameterUnit,
 	runtime.SetFinalizer(ses, func(ss *Session) {
 		ss.Close()
 	})
-	ses.a = arena.NewArena(ses.uuid)
-	fmt.Printf("[Ssession] create new session %s\n", ses.uuid)
+	//ses.a = arena.NewArena(ses.uuid)
+	//fmt.Printf("[Ssession] create new session %s\n", ses.uuid)
 	return ses
 }
 
@@ -519,8 +519,8 @@ func (ses *Session) Close() {
 		mpool.DeleteMPool(mp)
 		ses.SetMemPool(nil)
 	}
-	ses.a.Free()
-	ses.a = nil
+	//ses.a.Free()
+	//ses.a = nil
 	fmt.Printf("[Ssession] session %s closing ...\n", ses.uuid)
 }
 
@@ -1224,6 +1224,26 @@ func (ses *Session) GetSql() string {
 	ses.mu.Lock()
 	defer ses.mu.Unlock()
 	return ses.sql
+}
+
+func (ses *Session) SetArena() {
+	ses.mu.Lock()
+	defer ses.mu.Unlock()
+	if ses.a == nil {
+		ses.a = arena.NewArena(ses.uuid)
+	} else {
+		ses.a.AddCnt(1, false)
+	}
+}
+
+func (ses *Session) FreeArena() {
+	ses.mu.Lock()
+	defer ses.mu.Unlock()
+	if ses.a != nil {
+		if ses.a.ArenaFree() {
+			ses.a = nil
+		}
+	}
 }
 
 func (ses *Session) IsEntireEngine() bool {
