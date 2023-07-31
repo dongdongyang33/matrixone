@@ -2,6 +2,7 @@ package arena
 
 import (
 	"sync"
+	"unsafe"
 
 	"github.com/google/uuid"
 )
@@ -42,4 +43,13 @@ type Arena struct {
 	ptr uintptr
 
 	mp map[uintptr]bool
+}
+
+type eface struct {
+	_    unsafe.Pointer
+	data unsafe.Pointer
+}
+
+func efaceOf[T any](ep *T) *eface {
+	return (*eface)(unsafe.Pointer(ep))
 }

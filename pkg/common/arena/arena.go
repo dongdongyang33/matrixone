@@ -54,8 +54,9 @@ func New[T any](a *Arena) *T {
 			if len(data) < sz {
 				panic(fmt.Sprintf("arena new might wrong, %d %d %d", unsafe.Sizeof(v), sz, len(data)))
 			}
-
-			return (*T)(unsafe.Pointer(&data[0]))
+			e := efaceOf(&v)
+			e.data = unsafe.Pointer(&data[0])
+			return &v
 		}
 	}
 	return new(T)

@@ -95,8 +95,6 @@ type Col struct {
 // Scope is the output of the compile process.
 // Each sql will be compiled to one or more execution unit scopes.
 type Scope struct {
-	// DataSource stores information about data source.
-	DataSource *Source
 	// Magic specifies the type of Scope.
 	// 0 -  execution unit for reading data.
 	// 1 -  execution unit for processing intermediate results.
@@ -116,6 +114,8 @@ type Scope struct {
 	IsLoad bool
 
 	Plan *plan.Plan
+	// DataSource stores information about data source.
+	DataSource *Source
 	// PreScopes contains children of this scope will inherit and execute.
 	PreScopes []*Scope
 	// NodeInfo contains the information about the remote node.
