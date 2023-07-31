@@ -16,6 +16,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"hash/crc32"
 	"sync"
 
@@ -60,13 +61,19 @@ import (
 )
 
 func NewScope(c *Compile, magic magicType) *Scope {
+	//s := new(Scope)
 	s := arena.New[Scope](c.a)
 	s.Magic = magic
 	return s
 }
 
-func NewScopes(c *Compile, len, cap int) []*Scope {
-	return arena.MakeSlice[*Scope](c.a, len, cap)
+func NewScopes(c *Compile, len1, cap1 int) []*Scope {
+	//return make([]*Scope, len, cap)
+	ret := arena.MakeSlice[*Scope](c.a, len1, cap1)
+	if cap(ret) != cap1 || len(ret) != len1 {
+		panic(fmt.Sprintf("ret len = %d, cap = %d but len1 = %d cap1 = %d", len(ret), cap(ret), len1, cap1))
+	}
+	return ret
 }
 
 // Run read data from storage engine and run the instructions of scope.
@@ -214,13 +221,17 @@ func (s *Scope) ParallelRun(c *Compile, remote bool) error {
 		return s.MergeRun(c)
 	}
 
+	fmt.Printf("[parallelrun] %s\n", DebugShowScopes([]*Scope{s}))
+
 	mcpu := s.NodeInfo.Mcpu
 	var err error
 
 	if len(s.DataSource.RuntimeFilterSpecs) > 0 {
+		fmt.Printf("[runtinefilterwarning]\n")
 		exprs := make([]*plan.Expr, 0, len(s.DataSource.RuntimeFilterSpecs))
 		filters := make([]*pbpipeline.RuntimeFilter, 0, len(exprs))
 
+		fmt.Printf("[RuntimeFilterSpecs0] s.DataSource = %p, s.DataSource.TableDef = %p, .RuntimeFilterSpecs = %p .tableDef.Name2ColIndex = %p\n", s.DataSource, s.DataSource.TableDef, s.DataSource.RuntimeFilterSpecs, s.DataSource.TableDef.Name2ColIndex)
 		for _, spec := range s.DataSource.RuntimeFilterSpecs {
 			c.lock.RLock()
 			ch, ok := c.runtimeFilterReceiverMap[spec.Tag]
@@ -235,20 +246,28 @@ func (s *Scope) ParallelRun(c *Compile, remote bool) error {
 
 			case filter := <-ch:
 				if filter == nil {
+					fmt.Printf("[RuntimeFilterSpecs99] receive nil filter from ch\n")
 					exprs = nil
 					s.NodeInfo.Data = s.NodeInfo.Data[:0]
 					break
 				}
 				if filter.Typ == pbpipeline.RuntimeFilter_NO_FILTER {
+					fmt.Printf("[RuntimeFilterSpecs99] receive RuntimeFilter_NO_FILTER filter from ch\n")
 					continue
 				}
 
 				exprs = append(exprs, spec.Expr)
 				filters = append(filters, filter)
 			}
+			fmt.Printf("[RuntimeFilterSpecs99] s.DataSource = %p\n", s.DataSource)
+			fmt.Printf("[RuntimeFilterSpecs99] s.DataSource.TableDef = %p\n", s.DataSource.TableDef)
+			fmt.Printf("[RuntimeFilterSpecs99] s.DataSource.RuntimeFilterSpecs = %p\n", s.DataSource.RuntimeFilterSpecs)
+			fmt.Printf("[RuntimeFilterSpecs99] s.DataSource = %p, s.DataSource.TableDef = %p, .RuntimeFilterSpecs = %p .tableDef.Name2ColIndex = %p\n", s.DataSource, s.DataSource.TableDef, s.DataSource.RuntimeFilterSpecs, s.DataSource.TableDef.Name2ColIndex)
 		}
 
+		fmt.Printf("[RuntimeFilterSpecs1] s.DataSource = %p, s.DataSource.TableDef = %p, .RuntimeFilterSpecs = %p .tableDef.Name2ColIndex = %p\n", s.DataSource, s.DataSource.TableDef, s.DataSource.RuntimeFilterSpecs, s.DataSource.TableDef.Name2ColIndex)
 		if len(exprs) > 0 {
+			fmt.Printf("[RuntimeFilterSpecs2] s.DataSource = %p, s.DataSource.TableDef = %p, .RuntimeFilterSpecs = %p .tableDef.Name2ColIndex = %p\n", s.DataSource, s.DataSource.TableDef, s.DataSource.RuntimeFilterSpecs, s.DataSource.TableDef.Name2ColIndex)
 			s.NodeInfo.Data, err = ApplyRuntimeFilters(c.ctx, s.Proc, s.DataSource.TableDef, s.NodeInfo.Data, exprs, filters)
 			if err != nil {
 				return err
@@ -379,21 +398,36 @@ func (s *Scope) ParallelRun(c *Compile, remote bool) error {
 		return s.Run(c)
 	}
 
-	ss := make([]*Scope, mcpu)
-	for i := 0; i < mcpu; i++ {
-		ss[i] = &Scope{
-			Magic: Normal,
-			DataSource: &Source{
-				R:            rds[i],
-				SchemaName:   s.DataSource.SchemaName,
-				RelationName: s.DataSource.RelationName,
-				Attributes:   s.DataSource.Attributes,
-				AccountId:    s.DataSource.AccountId,
-			},
-			NodeInfo: s.NodeInfo,
+	ss := NewScopes(c, mcpu, mcpu)
+	for i := range ss {
+		ss[i] = NewScope(c, Normal)
+		ss[i].DataSource = &Source{
+			R:            rds[i],
+			SchemaName:   s.DataSource.SchemaName,
+			RelationName: s.DataSource.RelationName,
+			Attributes:   s.DataSource.Attributes,
+			AccountId:    s.DataSource.AccountId,
 		}
+		ss[i].NodeInfo = s.NodeInfo
 		ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
 	}
+	/*
+		ss := make([]*Scope, mcpu)
+		for i := 0; i < mcpu; i++ {
+			ss[i] = &Scope{
+				Magic: Normal,
+				DataSource: &Source{
+					R:            rds[i],
+					SchemaName:   s.DataSource.SchemaName,
+					RelationName: s.DataSource.RelationName,
+					Attributes:   s.DataSource.Attributes,
+					AccountId:    s.DataSource.AccountId,
+				},
+				NodeInfo: s.NodeInfo,
+			}
+			ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
+		}
+	*/
 	newScope := newParallelScope(s, ss)
 	newScope.SetContextRecursively(s.Proc.Ctx)
 	return newScope.MergeRun(c)
@@ -437,15 +471,25 @@ func (s *Scope) JoinRun(c *Compile) error {
 		chp[i].IsEnd = true
 	}
 
-	ss := make([]*Scope, mcpu)
-	for i := 0; i < mcpu; i++ {
-		ss[i] = &Scope{
-			Magic:    Merge,
-			NodeInfo: s.NodeInfo,
-		}
+	ss := NewScopes(c, mcpu, mcpu)
+	for i := range ss {
+		ss[i] = NewScope(c, Merge)
+		ss[i].NodeInfo = s.NodeInfo
 		ss[i].Proc = process.NewWithAnalyze(s.Proc, s.Proc.Ctx, 2, c.anal.Nodes())
 		ss[i].Proc.Reg.MergeReceivers[1].Ch = make(chan *batch.Batch, 10)
 	}
+
+	/*
+		ss := make([]*Scope, mcpu)
+		for i := 0; i < mcpu; i++ {
+			ss[i] = &Scope{
+				Magic:    Merge,
+				NodeInfo: s.NodeInfo,
+			}
+			ss[i].Proc = process.NewWithAnalyze(s.Proc, s.Proc.Ctx, 2, c.anal.Nodes())
+			ss[i].Proc.Reg.MergeReceivers[1].Ch = make(chan *batch.Batch, 10)
+		}
+	*/
 	probe_scope, build_scope := c.newJoinProbeScope(s, ss), c.newJoinBuildScope(s, ss)
 	s = newParallelScope(s, ss)
 
@@ -489,22 +533,38 @@ func (s *Scope) isRight() bool {
 
 func (s *Scope) LoadRun(c *Compile) error {
 	mcpu := s.NodeInfo.Mcpu
-	ss := make([]*Scope, mcpu)
+
+	ss := NewScopes(c, mcpu, mcpu)
 	bat := batch.NewWithSize(1)
 	{
 		bat.Vecs[0] = vector.NewConstNull(types.T_int64.ToType(), 1, c.proc.Mp())
 		bat.SetRowCount(1)
 	}
-	for i := 0; i < mcpu; i++ {
-		ss[i] = &Scope{
-			Magic: Normal,
-			DataSource: &Source{
-				Bat: bat,
-			},
-			NodeInfo: s.NodeInfo,
-		}
-		ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
+	for i := range ss {
+		ss[i] = NewScope(c, Normal)
+		ss[i].NodeInfo = s.NodeInfo
+		ss[i].DataSource = &Source{Bat: bat}
+		ss[i].Proc = process.NewWithAnalyze(s.Proc, s.Proc.Ctx, 0, c.anal.Nodes())
 	}
+
+	/*
+		ss := make([]*Scope, mcpu)
+		bat := batch.NewWithSize(1)
+		{
+			bat.Vecs[0] = vector.NewConstNull(types.T_int64.ToType(), 1, c.proc.Mp())
+			bat.SetRowCount(1)
+		}
+		for i := 0; i < mcpu; i++ {
+			ss[i] = &Scope{
+				Magic: Normal,
+				DataSource: &Source{
+					Bat: bat,
+				},
+				NodeInfo: s.NodeInfo,
+			}
+			ss[i].Proc = process.NewWithAnalyze(s.Proc, c.ctx, 0, c.anal.Nodes())
+		}
+	*/
 	newScope := newParallelScope(s, ss)
 
 	return newScope.MergeRun(c)

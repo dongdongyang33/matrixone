@@ -16,6 +16,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
@@ -66,6 +67,7 @@ func ApplyRuntimeFilters(
 		switch filter.Typ {
 		case pipeline.RuntimeFilter_IN:
 			vec := vector.NewVec(types.T_any.ToType())
+			// TODO: check here?
 			err = vec.UnmarshalBinary(filter.Data)
 			if err != nil {
 				return nil, err
@@ -94,6 +96,7 @@ func ApplyRuntimeFilters(
 	columnMap := make(map[int]int)
 	zms := make([]objectio.ZoneMap, auxIdCnt)
 	vecs := make([]*vector.Vector, auxIdCnt)
+	fmt.Printf("[ApplyRuntimeFilters] tableDef = %p\n", tableDef)
 	plan2.GetColumnMapByExprs(exprs, tableDef, &columnMap)
 
 	defer func() {

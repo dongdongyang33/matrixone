@@ -916,10 +916,14 @@ func GetColumnMapByExpr(expr *plan.Expr, tableDef *plan.TableDef, columnMap *map
 		}
 
 	case *plan.Expr_Col:
+		fmt.Printf("[GetColumnMapByExpr000] tableDef = %p, .Name2ColIndex = %p\n", tableDef, tableDef.Name2ColIndex)
 		idx := exprImpl.Col.ColPos
 		colName := exprImpl.Col.Name
+		fmt.Printf("[GetColumnMapByExpr(before)]colName = %s and addr = %p\n", colName, &colName)
 		dotIdx := strings.Index(colName, ".")
 		colName = colName[dotIdx+1:]
+		fmt.Printf("[GetColumnMapByExpr]colName = %s and addr = %p\n", colName, &colName)
+		fmt.Printf("[GetColumnMapByExpr111] tableDef = %p, .Name2ColIndex = %p\n", tableDef, tableDef.Name2ColIndex)
 		colIdx := tableDef.Name2ColIndex[colName]
 		seqnum := int(colIdx) // for extenal scan case, tableDef has only Name2ColIndex, no Cols, leave seqnum as colIdx
 		if len(tableDef.Cols) > 0 {
@@ -930,6 +934,7 @@ func GetColumnMapByExpr(expr *plan.Expr, tableDef *plan.TableDef, columnMap *map
 }
 
 func GetColumnMapByExprs(exprs []*plan.Expr, tableDef *plan.TableDef, columnMap *map[int]int) {
+	fmt.Printf("[GetColumnMapByExprs] tableDef = %p\n", tableDef)
 	for _, expr := range exprs {
 		GetColumnMapByExpr(expr, tableDef, columnMap)
 	}

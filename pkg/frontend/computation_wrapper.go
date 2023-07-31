@@ -348,7 +348,7 @@ func (cwft *TxnComputationWrapper) Compile(requestCtx context.Context, u interfa
 		cwft.stmt,
 		cwft.ses.isInternal,
 		deepcopy.Copy(cwft.ses.getCNLabels()).(map[string]string),
-		cwft.ses.a,
+		nil,
 	)
 
 	if _, ok := cwft.stmt.(*tree.ExplainAnalyze); ok {
