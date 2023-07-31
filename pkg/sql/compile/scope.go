@@ -63,6 +63,7 @@ import (
 func NewScope(c *Compile, magic magicType) *Scope {
 	//s := new(Scope)
 	s := arena.New[Scope](c.a)
+	*s = Scope{}
 	s.Magic = magic
 	return s
 }

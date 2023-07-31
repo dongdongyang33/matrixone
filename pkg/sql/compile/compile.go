@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"math"
 	"net"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -79,7 +78,8 @@ const (
 )
 
 var (
-	ncpu = runtime.NumCPU()
+	//ncpu = runtime.NumCPU()
+	ncpu = 1
 )
 
 var pool = sync.Pool{

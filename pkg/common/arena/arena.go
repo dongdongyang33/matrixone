@@ -94,7 +94,7 @@ func (a *Arena) alloc(sz int) []byte {
 	for i := range a.chunks {
 		chunk := &a.chunks[i]
 		if data := chunk.alloc(sz); data != nil {
-			return data
+			return data[:sz:sz]
 		}
 	}
 	return nil
